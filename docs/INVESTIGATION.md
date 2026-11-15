@@ -11,8 +11,10 @@ No launcher features were implemented in this milestone.
 - Vista baseline: `d514d934573ddf31e07b8a1ed90ee6b22e1a04ca`.
 - Development branch: `custom-google-tv`; `upstream` preserves the original,
   `origin` points to the user's fork. Original history and MIT license retained.
-- User target: Onn 4K running Google TV. Exact model, Android version, RAM,
-  installed Nuvio variant/version, and TV-provider permissions remain unverified.
+- Verified target: Onn 4K Streaming Box (`onn_4k_gtv`, device `YOC`), Android 14,
+  API 34. RAM and full TV-provider data coverage remain unverified.
+- Installed Nuvio: Play Store package `com.nuvio.app`, version `1.0.0`, code 1062.
+  This is older than the current source inspected for integration capabilities.
 - Original requirements: [PROJECT_BRIEF.md](PROJECT_BRIEF.md).
 
 ## Vista source map
@@ -166,20 +168,33 @@ the repository/cache, movable clock and system screensaver settings integration.
 
 ## Hardware validation still required
 
-Record model and OS through ADB once paired. No device was configured or stock
-launcher changed. First install/launch Vista as a regular app; validate launch,
-Home/Back, app launching, permission-denied behavior and D-pad return focus before
-optionally choosing it as Home. Record the stock Home component and recovery
-procedure for that firmware before any Home-role change. Screensaver selection,
-activation/exit, offline Immich behavior and Nuvio content resumes are future
-device checks, not completed acceptance criteria.
+Wireless ADB pairing and connection succeeded on 2026-11-15. The baseline APK
+installed successfully. It was opened through its normal leanback entry, and
+read-only ADB diagnostics confirmed `dev.drewett.vista/.MainActivity` running as
+the visible, resumed foreground activity. App-specific crash/provider log checks
+returned no matching errors in the inspected window. This establishes process
+startup, not visual correctness or complete runtime acceptance.
+
+`READ_TV_LISTINGS` was granted for active user 0. No overlay, accessibility,
+notification-listener, or secure-settings grants were added. The secondary user
+was not configured. Provider data coverage and installed Nuvio 1.0.0 publication
+must still be checked; newer upstream source is not proof of installed behavior.
+
+The stock Home component remains
+`com.google.android.apps.tv.launcherx/.home.HomeActivity`, verified before and
+after installing/opening Vista. No Home-role change, stock launcher disabling,
+uninstall, or automated remote input was performed. Physical remote validation
+of D-pad, Back, Home returning to stock, app launching and return focus remains
+pending. Screensaver activation/exit, offline Immich behavior and Nuvio content
+resumes are future device checks, not completed acceptance criteria.
 
 ## Baseline build result and software
 
 **Result: unmodified release APK built successfully on 2026-11-15.** The final
 Gradle pass reported `BUILD SUCCESSFUL`, with 48 actionable tasks (18 executed,
 30 up to date). Kotlin compilation and release vital lint passed. There are no
-existing unit/instrumentation test source sets; runtime behavior is untested.
+existing unit/instrumentation test source sets. Device process startup has since
+been verified as described above; remote interaction checks remain pending.
 
 The application source and Gradle configuration remain byte-for-byte identical
 to Vista baseline. `:app:assembleRelease --no-daemon --stacktrace` was attempted
@@ -233,7 +248,7 @@ against the Vista baseline confirmed no changes to app sources or Gradle files.
 Upstream's release variant uses debug signing; production distribution will
 need a private release key. No remote CI success is asserted by this investigation.
 
-ADB runs successfully outside the restricted initial command. `adb devices -l`
-returned an empty device list; no device-runtime checks were completed. No
-emulator is configured. A connected Onn or a TV emulator is needed for runtime
-validation.
+ADB runs successfully outside the restricted initial command. The Onn is paired
+over Wi-Fi, and installation/foreground process startup were verified. No
+emulator is configured. Pairing secrets and local network endpoints are excluded
+from this report and application source.
