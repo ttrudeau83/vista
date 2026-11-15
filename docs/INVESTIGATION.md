@@ -4,6 +4,11 @@ Investigation date: 2026-11-15. Scope: inspect upstream and integrations, attemp
 an unmodified build, preserve the baseline, and propose one small next task.
 No launcher features were implemented in this milestone.
 
+Subsequent approved work: the Immich photo-background preview is documented in
+[IMMICH_PREVIEW.md](IMMICH_PREVIEW.md). The findings below retain the investigation
+baseline; current code adds optional Immich functionality and SmartTube replaces
+the planned YouTube shortcut.
+
 ## Repository and target
 
 - Foundation: https://github.com/kierandrewett/vista

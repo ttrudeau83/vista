@@ -2,6 +2,13 @@
 
 A home-screen launcher for Android TV and Google TV, written in Kotlin with Jetpack Compose for TV.
 
+This custom fork adds an optional Immich photo background with encrypted API-key
+settings, album selection, crop/fit and a private offline cache. See
+[Immich preview setup](docs/IMMICH_PREVIEW.md) and the
+[project brief](docs/PROJECT_BRIEF.md). The original Vista history and MIT license
+are retained. SmartTube is the preferred video shortcut alongside Nuvio; installed
+apps continue to use Vista's existing discovery and launch behavior.
+
 Vista replaces the stock launcher with a faster, ad-free home screen that adapts its theme to the
 room and surfaces content from the apps already installed on the device. It was written for a
 projector that is unreadable under the stock dark-only interface in daylight.
@@ -16,8 +23,9 @@ Vista is built around three goals:
   use, dark at night.
 - **Relevant content.** Continue Watching, per-app content rows, and a Movies/Shows library are read
   directly from the device's TV provider, with no recommendation feed and no advertising.
-- **No external dependencies.** Vista reads only local state. It requires no account and sends
-  nothing off the device.
+- **Optional self-hosted photos.** Local app discovery needs no account. Enabling
+  Immich sends authenticated album/photo requests to the configured server;
+  credentials and cached photos remain private to the device.
 
 Targets API 34 and runs on a 1 GB-RAM Google TV stick.
 

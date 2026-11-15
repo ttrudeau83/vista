@@ -7,10 +7,10 @@ Fork the open-source Vista Android TV launcher and develop a lightweight, visual
 Primary integrations:
 - Immich: family photos for home backgrounds and screensaver
 - NuvioTV: Continue Watching and primary media app
-- YouTube: app shortcut
+- SmartTube: app shortcut (replaces YouTube per user direction)
 - YouTube Music: app shortcut
 
-Target hardware: Google TV 4K device. Exact model and Android version must be confirmed during setup.
+Target hardware: Onn 4K Streaming Box, Android TV OS 14 (API 34), confirmed over ADB.
 
 ## Repositories
 
@@ -63,7 +63,7 @@ Adapt to Vista's existing package structure instead of forcing unnecessary refac
 - If Nuvio does not publish usable data, document the missing integration and propose a minimal Nuvio-side patch
 - Do not access another app's private database or require root
 
-### YouTube and YouTube Music
+### SmartTube and YouTube Music
 
 - Detect installed apps
 - Display customizable shortcuts
@@ -86,7 +86,7 @@ Adapt to Vista's existing package structure instead of forcing unnecessary refac
 - Full-screen Immich photo background
 - Subtle gradient and translucent content surfaces
 - Nuvio Continue Watching row
-- Prominent Nuvio, YouTube, YouTube Music, and Photos shortcuts
+- Prominent Nuvio, SmartTube, YouTube Music, and Photos shortcuts
 - Fully functional D-pad navigation
 - Predictable focus restoration
 - No ads or unnecessary recommendations
@@ -120,6 +120,13 @@ Do not implement the full product yet.
 Stop after this investigation and report. Do not begin implementing later milestones without approval.
 
 ## Acceptance criteria
+
+Current approved milestone (2026-11-15): implement the Immich single-photo
+background proof of concept with TV settings, API-key authentication, album
+selection, crop/fit and offline cached fallback. The user chose to proceed with
+Immich before performance tuning. SmartTube replaces the YouTube shortcut;
+its existing installation and launch behavior already work. Slideshow rotation,
+screensaver and Nuvio adaptation remain later milestones.
 
 - Launcher builds and starts successfully
 - Home and Back behavior is correct

@@ -117,6 +117,10 @@ private fun PanelContent(themeMode: ThemeMode, onCycleTheme: () -> Unit, onDismi
         Text(timeLine(), style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.onSurface)
 
         Tile("Theme", themeMode.label, R.drawable.ic_theme, Modifier.fillMaxWidth().focusRequester(firstTile), onClick = onCycleTheme)
+        Tile("Immich photos", "Configure", R.drawable.ic_display, Modifier.fillMaxWidth()) {
+            context.startActivity(Intent(context, dev.drewett.vista.ImmichSettingsActivity::class.java))
+            onDismiss()
+        }
         Tile("Wi-Fi", wifiName ?: "Open", R.drawable.ic_wifi, Modifier.fillMaxWidth()) { open(Settings.ACTION_WIFI_SETTINGS) }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

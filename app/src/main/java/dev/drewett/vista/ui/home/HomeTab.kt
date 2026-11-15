@@ -108,13 +108,15 @@ fun HomeTab(
     contentFocus: FocusRequester,
     resetSignal: Int,
     modifier: Modifier = Modifier,
+    photo: ImmichBackgroundState = ImmichBackgroundState(),
 ) {
     var focused by remember { mutableStateOf<Spotlight?>(null) }
     val heroItem = focused ?: sections.firstOrNull()?.let { firstSpotlightOf(it) }
 
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         // Immersive full-bleed hero behind everything.
-        HeroBackground(heroItem)
+        val photoFile = photo.file
+        if (photoFile != null) PhotoBackground(photoFile, photo.fit) else HeroBackground(heroItem)
         Column(Modifier.fillMaxSize()) {
             Spacer(Modifier.height(TopBarClearance))
             HeroInfo(

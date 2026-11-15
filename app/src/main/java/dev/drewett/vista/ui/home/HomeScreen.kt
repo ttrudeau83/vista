@@ -27,7 +27,16 @@ import dev.drewett.vista.ui.content.SearchScreen
 fun HomeScreen(
     onOpenQuickSettings: () -> Unit = {},
     viewModel: HomeViewModel = viewModel(),
+    backgroundViewModel: ImmichBackgroundViewModel = viewModel(),
 ) {
+    val photo by backgroundViewModel.photo.collectAsStateWithLifecycle()
+    MaterialTheme(colorScheme = if (photo.file != null) dev.drewett.vista.ui.theme.VistaDarkColors else MaterialTheme.colorScheme) {
+        HomeContent(onOpenQuickSettings, viewModel, photo)
+    }
+}
+
+@Composable
+private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewModel, photo: ImmichBackgroundState) {
     val apps by viewModel.apps.collectAsStateWithLifecycle()
     val sections by viewModel.sections.collectAsStateWithLifecycle()
     val favouritesSet by viewModel.favourites.collectAsStateWithLifecycle()
@@ -64,6 +73,7 @@ fun HomeScreen(
                     topBarFocus = topBarFocus,
                     contentFocus = contentFocus,
                     resetSignal = resetSignal,
+                    photo = photo,
                 )
 
             VistaTab.MOVIES -> ContentGrid("Movies", movies, viewModel::launchContent, contentFocus = contentFocus)
