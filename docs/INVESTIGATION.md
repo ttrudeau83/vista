@@ -188,6 +188,28 @@ of D-pad, Back, Home returning to stock, app launching and return focus remains
 pending. Screensaver activation/exit, offline Immich behavior and Nuvio content
 resumes are future device checks, not completed acceptance criteria.
 
+### User navigation feedback and performance baseline
+
+The user confirmed that Vista opened and D-pad navigation worked, but reported
+that it felt slow. A read-only ADB snapshot of the running release build recorded
+181 rendered frames, 166 janky frames (91.71%), median frame time 117 ms, 90th
+percentile 450 ms and 157 slow-UI-thread events. Choreographer also reported
+skipped-frame warnings for Vista. This is an aggregate including startup, not
+an isolated navigation benchmark or a measurement of button-to-screen latency.
+
+Memory at the snapshot was approximately 242 MiB total PSS, of which 150 MiB
+was graphics accounting. These observations confirm a performance concern but
+do not identify its cause. GPU percentile output was dominated by the tool's
+terminal histogram bucket and is not used to infer actual GPU frame duration.
+
+`ui/home/HomeTab.kt` renders a full-screen blurred poster (`blur(22.dp)`) and
+450 ms crossfades keyed to focused content. These are candidates for a controlled
+comparison, not proven bottlenecks. Before the photo-background implementation,
+consider a separately approved performance task: collect fresh frame timing
+over a consistent physical-remote navigation sequence, compare a reduced-effect
+background, and retain any change only after matching device measurements and
+user confirmation. No performance code changes have been made.
+
 ## Baseline build result and software
 
 **Result: unmodified release APK built successfully on 2026-11-15.** The final
