@@ -4,3 +4,13 @@ local.properties
 *.iml
 .idea/
 .kotlin/
+
+# Local SDKs, Gradle caches, reference repositories and investigation logs.
+.gradle-user/
+.research/
+.tools/
+*.jks
+*.keystore
+.env
+.env.*
+!.env.example
