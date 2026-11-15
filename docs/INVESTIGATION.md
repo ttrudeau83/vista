@@ -176,37 +176,64 @@ device checks, not completed acceptance criteria.
 
 ## Baseline build result and software
 
+**Result: unmodified release APK built successfully on 2026-11-15.** The final
+Gradle pass reported `BUILD SUCCESSFUL`, with 48 actionable tasks (18 executed,
+30 up to date). Kotlin compilation and release vital lint passed. There are no
+existing unit/instrumentation test source sets; runtime behavior is untested.
+
 The application source and Gradle configuration remain byte-for-byte identical
 to Vista baseline. `:app:assembleRelease --no-daemon --stacktrace` was attempted
 using Unity's bundled Temurin JDK 17.0.18, Android platform 34, and Gradle 8.7.
-Gradle downloaded successfully and reached Android dependency setup, but the
-build failed before compilation because **Android SDK Build-Tools 34.0.0 is
-missing and its SDK license has not been accepted**. Unity has Build-Tools 36.0.0,
-which does not satisfy this pinned baseline. No APK or successful startup is
-claimed. Local diagnostic log: `.research/build-baseline.log` (ignored).
+The initial build stopped because Build-Tools 34.0.0 and SDK license acceptance
+were missing. With the user's approval, the SDK license was accepted and
+Build-Tools 34.0.0 installed into ignored `.tools/android-sdk`. The existing
+Android 34 platform was copied there from Unity. Gradle also installed
+Platform-Tools 37.0.1. Unity's protected shared SDK could not be updated, so the
+build uses the project-local SDK instead.
+
+Windows denied Gradle 8.7 transform-cache directory renames during the build.
+Single-worker mode and disabled filesystem watching did not prevent this.
+Completed transform directories were moved to their expected cache names while
+Gradle was stopped, followed by bounded retries; application and build source
+were not edited. Related Gradle issue:
+https://github.com/gradle/gradle/issues/28948 . Local diagnostic log:
+`.research/build-baseline.log` (ignored).
+
+The successful build required finishing several completed transform-cache
+renames between stopped builds. This environment workaround may recur with
+Gradle 8.7 on Windows; a future build-tool upgrade should be a separate task.
+The earlier compiler warning was an upstream deprecated usage-stats constant;
+native libraries were packaged without stripping, which was nonfatal.
 
 Existing tools are under:
 `C:\Program Files\Unity\Hub\Editor\6000.6.0f1\Editor\Data\PlaybackEngines\AndroidPlayer`.
 Its `OpenJDK`, `SDK`, `SDK/platform-tools` and `SDK/cmdline-tools/16.0/bin`
 provide Java, Android platform 34, ADB and sdkmanager. A separate Android Studio
-or Java installation is not required. Missing software is Build-Tools 34.0.0.
+or Java installation is not required. The required build tools are now installed
+locally and remain outside Git.
 
-Once the SDK package/license is available, build in PowerShell with the actual
+Build in PowerShell with the actual
 local paths (do not commit machine-specific SDK paths into application code):
 
 ```powershell
 $androidTools = 'C:\Program Files\Unity\Hub\Editor\6000.6.0f1\Editor\Data\PlaybackEngines\AndroidPlayer'
 $env:JAVA_HOME = "$androidTools\OpenJDK"
-$env:ANDROID_HOME = "$androidTools\SDK"
+$env:ANDROID_HOME = Join-Path $PWD '.tools\android-sdk'
+$env:ANDROID_SDK_ROOT = $env:ANDROID_HOME
 $env:GRADLE_USER_HOME = "$PWD\.gradle-user"
-.\gradlew.bat :app:assembleRelease --no-daemon --stacktrace
+.\gradlew.bat :app:assembleRelease --no-daemon --max-workers=1 --no-watch-fs --stacktrace
 ```
 
-Expected APK: `app/build/outputs/apk/release/app-release.apk`. Upstream's release
-variant uses debug signing; production distribution will need a private release
-key. The upstream GitHub Actions workflow also builds this unmodified variant,
-but no remote CI success is asserted by this investigation.
+Built APK: `app/build/outputs/apk/release/app-release.apk` (18,620,241 bytes).
+SHA-256: `d523cbec771a6157e9f8429a41b18780a6e0c688522284530a48a62051bbfcef`.
+`apksigner verify --verbose` passed with APK Signature Scheme v2. `aapt dump
+badging` confirms `dev.drewett.vista`, version `0.1.0`, min SDK 28, target SDK 34,
+and leanback launch activity `dev.drewett.vista.MainActivity`. A Git comparison
+against the Vista baseline confirmed no changes to app sources or Gradle files.
+Upstream's release variant uses debug signing; production distribution will
+need a private release key. No remote CI success is asserted by this investigation.
 
-ADB could not start its local server within the restricted initial command;
-no device connection or device-runtime checks were completed. No emulator is
-configured. A connected Onn or a TV emulator is needed for runtime validation.
+ADB runs successfully outside the restricted initial command. `adb devices -l`
+returned an empty device list; no device-runtime checks were completed. No
+emulator is configured. A connected Onn or a TV emulator is needed for runtime
+validation.
