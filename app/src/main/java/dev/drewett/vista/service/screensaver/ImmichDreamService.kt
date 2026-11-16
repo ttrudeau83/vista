@@ -11,7 +11,7 @@ class ImmichDreamService : DreamService() {
         super.onAttachedToWindow()
         isInteractive = true
         isFullscreen = true
-        isScreenBright = false
+        isScreenBright = true
         photos = AmbientPhotoView(this,allowMusic = false,exit = { finish() })
         setContentView(photos!!)
     }

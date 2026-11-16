@@ -1,6 +1,14 @@
 # Media and photo fixes
 
-Installed version: `0.4.1-cache-navigation` (2026-11-16).
+Power follow-up (`0.4.2-screensaver-power`): the Onn's remaining 20-minute
+automatic sleep deadline was removed (`secure.sleep_timeout=-1`), while the
+one-minute screen/dream timeout remains. The dream requests a bright screen;
+the shared ambient photo view keeps the screen on only while active and clears
+that request on stop. This also covers Photos + player inside the music screen.
+Manual Power remains available. The previous sleep setting can be restored with
+`adb shell settings put secure sleep_timeout 1200000`.
+
+Installed version: `0.4.2-screensaver-power` (2026-11-16).
 
 - Tabs select in place; stable focus targets and explicit horizontal navigation
   prevent duplicate moves. Content cannot steal focus when a tab mounts. Focused

@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.4.1-cache-navigation"
+        versionCode = 6
+        versionName = "0.4.2-screensaver-power"
     }
 
     buildTypes {

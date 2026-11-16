@@ -49,6 +49,7 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
     }
     fun start() {
         if (work != null) return
+        keepScreenOn = true
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { work = it }
         val settings = SettingsRepository(context)
         scope.launch { settings.use24Hour.collectLatest { use24Hour = it; updateCorner() } }
@@ -96,6 +97,7 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
         }
     }
     fun stop() {
+        keepScreenOn = false
         handler.removeCallbacksAndMessages(null); work?.cancel(); work = null
         image.animate().cancel(); image.setImageDrawable(null); currentFile = null
         popup?.let(::removeView); popup = null
