@@ -237,7 +237,13 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
         video.alpha = 0f; video.visibility = View.VISIBLE
         if(video.isAvailable) video.surfaceTexture?.let { prepareVideo(media,Surface(it)) }
         val displayed = withTimeoutOrNull(15_000) { ready.await() } == true
-        if(displayed) { currentMedia = media; image.animate().cancel();video.animate().alpha(1f).setDuration(350).start() }
+        if(displayed) {
+            currentMedia = media
+            image.animate().cancel()
+            image.visibility=View.GONE
+            image.setImageDrawable(null)
+            video.animate().alpha(1f).setDuration(350).start()
+        }
         else releaseVideo()
         return displayed
     }

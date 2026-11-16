@@ -34,6 +34,12 @@ app with a debug APK. No additional exported component or permission is added.
 
 Validation: release compilation, vital lint and all 87 unit tests, plus the user's confirmation
 that the rail expands/collapses and Left returns from Photos. Live release
-counts confirmed a cached clip. Final rendered-video counter verification is
-recorded after a foreground photo-mode run. No private media/screenshots were
+counts confirmed a cached clip. Live validation confirmed renderedVideoStarts=1, and the user saw a video play. No private media/screenshots were
 copied from the TV to the host.
+## 0.4.7 transition fix
+
+The first rendered video frame now hides and clears the old ImageView before
+fading the TextureView in. Letterbox regions show the renderer's black background,
+not the previous photo. A failed video preparation still retains the previous
+visual until another item is ready. Release compilation and vital lint passed;
+the preceding rail/rotation suite passed all87 unit tests.

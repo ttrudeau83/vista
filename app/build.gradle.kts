@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 10
-        versionName = "0.4.6-navigation-rail"
+        versionCode = 11
+        versionName = "0.4.7-video-frame"
     }
 
     buildTypes {
