@@ -126,7 +126,14 @@ background proof of concept with TV settings, API-key authentication, album
 selection, crop/fit and offline cached fallback. The user chose to proceed with
 Immich before performance tuning. SmartTube replaces the YouTube shortcut;
 its existing installation and launch behavior already work. Slideshow rotation,
-screensaver and Nuvio adaptation remain later milestones.
+screensaver and Nuvio adaptation were initially later milestones.
+
+Subsequent user-approved scope: fixed video-row layout with wider titles; 12-hour
+clock and Vista settings; replace Library with SmartTube/Music/Photos links;
+system-wide Immich dream after two idle minutes, without interrupting media;
+Family calendar upcoming panel opening a full month view; Home redirection to
+Vista replacing Projectivy's accessibility redirection while keeping stock apps.
+User also authorized ADB provisioning of supplied private Immich/calendar details.
 
 - Launcher builds and starts successfully
 - Home and Back behavior is correct

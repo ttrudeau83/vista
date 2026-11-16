@@ -2,8 +2,9 @@
 
 A home-screen launcher for Android TV and Google TV, written in Kotlin with Jetpack Compose for TV.
 
-This custom fork adds an optional Immich photo background with encrypted API-key
-settings, album selection, crop/fit and a private offline cache. See
+This custom fork adds an optional Immich photo background and system screensaver,
+encrypted settings, a private offline cache, and a Family calendar panel/month
+view. See [Family Home update](docs/FAMILY_HOME.md),
 [Immich preview setup](docs/IMMICH_PREVIEW.md) and the
 [project brief](docs/PROJECT_BRIEF.md). The original Vista history and MIT license
 are retained. SmartTube is the preferred video shortcut alongside Nuvio; installed

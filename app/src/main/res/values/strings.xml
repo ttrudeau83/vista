@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Vista</string>
-    <string name="a11y_description">Lets the Settings button on your remote open Vista\'s quick-settings panel from any app.</string>
+    <string name="a11y_description">Routes Home to Vista and lets the Settings button open Vista settings from any app. Observes Home window changes without reading screen contents.</string>
 </resources>

@@ -66,6 +66,12 @@
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Vista" />
 
+        <activity
+            android:name=".FamilyCalendarActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Vista" />
+
         <!-- Translucent host for the quick-settings overlay (opened by the Settings key anywhere) -->
         <activity
             android:name=".QuickSettingsActivity"
@@ -87,6 +93,21 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- Android starts this only when selected as the system screensaver. -->
+        <service
+            android:name=".service.screensaver.ImmichDreamService"
+            android:exported="true"
+            android:label="@string/immich_dream_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.dream"
+                android:resource="@xml/immich_dream" />
         </service>
 
         <!-- Captures notifications for the quick-settings panel (enabled via adb) -->

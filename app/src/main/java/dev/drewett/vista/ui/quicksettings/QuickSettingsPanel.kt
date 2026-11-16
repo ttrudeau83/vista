@@ -54,6 +54,7 @@ import androidx.tv.material3.Text
 import dev.drewett.vista.R
 import dev.drewett.vista.data.notifications.NotificationRepository
 import dev.drewett.vista.domain.ThemeMode
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -67,6 +68,10 @@ fun QuickSettingsPanel(
     themeMode: ThemeMode,
     onCycleTheme: () -> Unit,
     onDismiss: () -> Unit,
+    use24Hour: Boolean = false,
+    onToggleClockFormat: () -> Unit = {},
+    screensaverClock: Boolean = true,
+    onToggleScreensaverClock: () -> Unit = {},
 ) {
     Box(Modifier.fillMaxSize()) {
         AnimatedVisibility(visible, Modifier.fillMaxSize(), enter = fadeIn(tween(220)), exit = fadeOut(tween(200))) {
@@ -78,13 +83,21 @@ fun QuickSettingsPanel(
             enter = slideInHorizontally(tween(300)) { it } + fadeIn(tween(300)),
             exit = slideOutHorizontally(tween(250)) { it } + fadeOut(tween(200)),
         ) {
-            PanelContent(themeMode, onCycleTheme, onDismiss)
+            PanelContent(themeMode, onCycleTheme, onDismiss, use24Hour, onToggleClockFormat, screensaverClock, onToggleScreensaverClock)
         }
     }
 }
 
 @Composable
-private fun PanelContent(themeMode: ThemeMode, onCycleTheme: () -> Unit, onDismiss: () -> Unit) {
+private fun PanelContent(
+    themeMode: ThemeMode,
+    onCycleTheme: () -> Unit,
+    onDismiss: () -> Unit,
+    use24Hour: Boolean,
+    onToggleClockFormat: () -> Unit,
+    screensaverClock: Boolean,
+    onToggleScreensaverClock: () -> Unit,
+) {
     val context = LocalContext.current
     val notifications by NotificationRepository.active.collectAsStateWithLifecycle()
     val firstTile = remember { FocusRequester() }
@@ -97,6 +110,10 @@ private fun PanelContent(themeMode: ThemeMode, onCycleTheme: () -> Unit, onDismi
     var outputs by remember { mutableStateOf<List<dev.drewett.vista.data.system.AudioOutput>>(emptyList()) }
     var showBt by remember { mutableStateOf(false) }
     var btDevices by remember { mutableStateOf<List<dev.drewett.vista.data.system.BtDevice>>(emptyList()) }
+    var clock by remember(use24Hour) { mutableStateOf(timeLine(use24Hour)) }
+    LaunchedEffect(use24Hour) {
+        while (true) { clock = timeLine(use24Hour); delay(20_000) }
+    }
 
     fun open(action: String) {
         runCatching { context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
@@ -113,14 +130,22 @@ private fun PanelContent(themeMode: ThemeMode, onCycleTheme: () -> Unit, onDismi
             .padding(horizontal = 28.dp, vertical = 30.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Text("Vista settings", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
         Text(dateLine(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
-        Text(timeLine(), style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.onSurface)
+        Text(clock, style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.onSurface)
 
         Tile("Theme", themeMode.label, R.drawable.ic_theme, Modifier.fillMaxWidth().focusRequester(firstTile), onClick = onCycleTheme)
+        Tile("Clock format", if (use24Hour) "24 hour" else "12 hour", R.drawable.ic_clock, Modifier.fillMaxWidth(), onClick = onToggleClockFormat)
+        Tile("Screensaver clock", if (screensaverClock) "On" else "Off", R.drawable.ic_clock, Modifier.fillMaxWidth(), onClick = onToggleScreensaverClock)
         Tile("Immich photos", "Configure", R.drawable.ic_display, Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, dev.drewett.vista.ImmichSettingsActivity::class.java))
             onDismiss()
         }
+        Tile("Family calendar", "Open", R.drawable.ic_clock, Modifier.fillMaxWidth()) {
+            context.startActivity(Intent(context, dev.drewett.vista.FamilyCalendarActivity::class.java))
+            onDismiss()
+        }
+        SubHeader("Google TV settings")
         Tile("Wi-Fi", wifiName ?: "Open", R.drawable.ic_wifi, Modifier.fillMaxWidth()) { open(Settings.ACTION_WIFI_SETTINGS) }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -164,14 +189,14 @@ private fun PanelContent(themeMode: ThemeMode, onCycleTheme: () -> Unit, onDismi
             GridTile("Accessibility", R.drawable.ic_accessibility) { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            GridTile("Screensaver", R.drawable.ic_screensaver) { open("android.settings.DREAM_SETTINGS") }
+            GridTile("Screensaver settings", R.drawable.ic_screensaver) { open("android.settings.DREAM_SETTINGS") }
             GridTile("Date & time", R.drawable.ic_clock) { open(Settings.ACTION_DATE_SETTINGS) }
         }
         Tile("Reload Vista", "", R.drawable.ic_reload, Modifier.fillMaxWidth()) {
             (context as? android.app.Activity)?.recreate()
             onDismiss()
         }
-        Tile("All settings", "Open", R.drawable.ic_settings, Modifier.fillMaxWidth()) { open(Settings.ACTION_SETTINGS) }
+        Tile("Google TV settings", "Open", R.drawable.ic_settings, Modifier.fillMaxWidth()) { open(Settings.ACTION_SETTINGS) }
 
         Text(
             "Notifications",
@@ -269,4 +294,4 @@ private fun Tile(label: String, value: String?, iconRes: Int?, modifier: Modifie
 }
 
 private fun dateLine(): String = SimpleDateFormat("EEE, MMM dd", Locale.getDefault()).format(Date())
-private fun timeLine(): String = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+private fun timeLine(use24Hour: Boolean): String = SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault()).format(Date())

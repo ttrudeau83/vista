@@ -60,12 +60,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class VistaTab(val label: String) {
+enum class VistaTab(val label: String, val action: Boolean = false) {
     FOR_YOU("For you"),
     MOVIES("Movies"),
     SHOWS("Shows"),
+    SMARTTUBE("SmartTube", true),
+    MUSIC("Music", true),
+    PHOTOS("Photos", true),
     APPS("Apps"),
-    LIBRARY("Library"),
 }
 
 private val BarHeight = 48.dp
@@ -76,6 +78,7 @@ fun VistaTopBar(
     onSelect: (VistaTab) -> Unit,
     onOpenQuickSettings: () -> Unit,
     onOpenSearch: () -> Unit,
+    use24Hour: Boolean = false,
     modifier: Modifier = Modifier,
     barFocusRequester: FocusRequester? = null,
     contentFocus: FocusRequester? = null,
@@ -107,11 +110,11 @@ fun VistaTopBar(
         ) {
             SegmentedTabs(selected = selected, onSelect = onSelect, barFocusRequester = barFocusRequester)
             Box(Modifier.weight(1f))
-            Clock()
+            Clock(use24Hour)
             Box(Modifier.size(16.dp))
             IconButton(R.drawable.ic_search, "Search", onClick = onOpenSearch)
             Box(Modifier.size(12.dp))
-            IconButton(R.drawable.ic_settings, "Quick settings", onClick = onOpenQuickSettings)
+            IconButton(R.drawable.ic_settings, "Vista settings", onClick = onOpenQuickSettings)
         }
     }
 }
@@ -156,6 +159,7 @@ private fun SegmentedTabs(
                     label = tab.label,
                     selected = i == sel,
                     onSelect = { onSelect(tab) },
+                    selectOnFocus = !tab.action,
                     onBounds = { x, w -> bounds[i] = x to w },
                     focusRequester = barFocusRequester.takeIf { i == sel },
                 )
@@ -169,6 +173,7 @@ private fun SegmentTab(
     label: String,
     selected: Boolean,
     onSelect: () -> Unit,
+    selectOnFocus: Boolean,
     onBounds: (Float, Float) -> Unit,
     focusRequester: FocusRequester? = null,
 ) {
@@ -178,7 +183,7 @@ private fun SegmentTab(
         Modifier
             .fillMaxHeight()
             .onGloballyPositioned { onBounds(it.positionInParent().x, it.size.width.toFloat()) }
-            .onFocusChanged { if (it.hasFocus) onSelect() },
+            .onFocusChanged { if (it.hasFocus && selectOnFocus) onSelect() },
     ) {
         Surface(
             onClick = onSelect,
@@ -187,7 +192,7 @@ private fun SegmentTab(
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = Color.Transparent,
-                focusedContainerColor = Color.Transparent,
+                focusedContainerColor = if (selectOnFocus) Color.Transparent else onBg.copy(alpha = 0.22f),
                 pressedContainerColor = Color.Transparent,
                 contentColor = if (selected) bg else onBg.copy(alpha = 0.6f),
                 focusedContentColor = if (selected) bg else onBg,
@@ -195,7 +200,7 @@ private fun SegmentTab(
             ),
         ) {
             Box(
-                modifier = Modifier.fillMaxHeight().padding(horizontal = 24.dp),
+                modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
@@ -236,11 +241,11 @@ private fun IconButton(iconRes: Int, contentDescription: String, onClick: () -> 
 }
 
 @Composable
-private fun Clock() {
-    var time by remember { mutableStateOf(currentTime()) }
-    LaunchedEffect(Unit) {
+private fun Clock(use24Hour: Boolean) {
+    var time by remember(use24Hour) { mutableStateOf(currentTime(use24Hour)) }
+    LaunchedEffect(use24Hour) {
         while (true) {
-            time = currentTime()
+            time = currentTime(use24Hour)
             delay(20_000)
         }
     }
@@ -251,5 +256,5 @@ private fun Clock() {
     )
 }
 
-private fun currentTime(): String =
-    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date())
+private fun currentTime(use24Hour: Boolean): String =
+    SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault()).format(Date())

@@ -96,6 +96,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         appRepository.launch(entry)
     }
 
+    /** Supported launch activities from installed packages, never content deep-link guesses. */
+    fun launchShortcut(music: Boolean) {
+        val candidates = if (music) listOf("com.google.android.youtube.tvmusic", "com.google.android.apps.youtube.music")
+            else listOf("org.smarttube.stable", "org.smarttube.beta", "com.teamsmart.videomanager.tv", "com.teamsmart.videomanager.tv.beta")
+        val entry = candidates.firstNotNullOfOrNull { pkg -> _apps.value.firstOrNull { it.packageName == pkg } }
+            ?: _apps.value.firstOrNull { if (music) it.label.equals("YouTube Music", true) else it.label.contains("SmartTube", true) }
+        if (entry != null) launch(entry) else {
+            android.widget.Toast.makeText(getApplication(), if (music) "Music is unavailable. Check Apps." else "SmartTube is unavailable. Check Apps.", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun launchContent(card: ContentCard) {
         card.packageName?.let { pkg -> viewModelScope.launch { launchHistoryRepository.record(pkg) } }
         if (!channelsRepository.launchContent(card)) {

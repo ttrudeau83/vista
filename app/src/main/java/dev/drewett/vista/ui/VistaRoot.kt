@@ -21,7 +21,14 @@ import dev.drewett.vista.ui.home.HomeScreen
 import dev.drewett.vista.ui.quicksettings.QuickSettingsPanel
 
 @Composable
-fun VistaRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
+fun VistaRoot(
+    themeMode: ThemeMode,
+    onCycleTheme: () -> Unit,
+    use24Hour: Boolean = false,
+    onToggleClockFormat: () -> Unit = {},
+    screensaverClock: Boolean = true,
+    onToggleScreensaverClock: () -> Unit = {},
+) {
     var quickSettingsOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val audio = remember { context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager }
@@ -54,12 +61,16 @@ fun VistaRoot(themeMode: ThemeMode, onCycleTheme: () -> Unit) {
                 }
             },
     ) {
-        HomeScreen(onOpenQuickSettings = { quickSettingsOpen = true })
+        HomeScreen(onOpenQuickSettings = { quickSettingsOpen = true }, use24Hour = use24Hour)
         QuickSettingsPanel(
             visible = quickSettingsOpen,
             themeMode = themeMode,
             onCycleTheme = onCycleTheme,
             onDismiss = { quickSettingsOpen = false },
+            use24Hour = use24Hour,
+            onToggleClockFormat = onToggleClockFormat,
+            screensaverClock = screensaverClock,
+            onToggleScreensaverClock = onToggleScreensaverClock,
         )
     }
 }

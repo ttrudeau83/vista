@@ -16,6 +16,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val themeMode = settingsRepository.themeMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.AUTO)
 
+    val use24Hour = settingsRepository.use24Hour
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    val screensaverClock = settingsRepository.screensaverClock
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun toggleClockFormat() {
+        viewModelScope.launch { settingsRepository.setUse24Hour(!use24Hour.value) }
+    }
+
+    fun toggleScreensaverClock() {
+        viewModelScope.launch { settingsRepository.setScreensaverClock(!screensaverClock.value) }
+    }
+
     fun cycleTheme() {
         val next = when (themeMode.value) {
             ThemeMode.AUTO -> ThemeMode.LIGHT

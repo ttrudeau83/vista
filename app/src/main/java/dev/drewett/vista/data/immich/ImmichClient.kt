@@ -33,6 +33,24 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
         throw ImmichException("No supported photos were found in this album.")
     }
 
+    suspend fun imageCandidates(albumId: String): List<String> {
+        requireNotNull(ImmichProtocol.id(albumId))
+        val candidates = mutableListOf<String>()
+        try {
+            val buckets = ImmichProtocol.buckets(json("/timeline/buckets?albumId=${encode(albumId)}&isTrashed=false"))
+            for (bucket in buckets.shuffled().take(8)) {
+                val body = json("/timeline/bucket?albumId=${encode(albumId)}&timeBucket=${encode(bucket)}&isTrashed=false")
+                candidates += ImmichProtocol.bucketImages(body).shuffled().take(100)
+                if (candidates.distinct().size >= 2) return candidates.distinct().take(100)
+            }
+        } catch (_: ImmichResponseTooLarge) { /* Fall back to a bounded search page. */ }
+        val filter = JSONObject().put("albumIds", JSONArray().put(albumId)).put("type", "IMAGE")
+            .put("isTrashed", false).put("size", 100).put("page", 1).toString()
+        return (candidates + ImmichProtocol.searchImages(json("/search/metadata", filter))).distinct().ifEmpty {
+            throw ImmichException("No supported photos were found in this album.")
+        }
+    }
+
     suspend fun image(assetId: String, output: OutputStream) {
         requireNotNull(ImmichProtocol.id(assetId))
         request("/assets/$assetId/thumbnail?size=preview", 20L * 1024 * 1024, output, image = true)

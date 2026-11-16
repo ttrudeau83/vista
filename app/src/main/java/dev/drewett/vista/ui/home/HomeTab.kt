@@ -20,6 +20,7 @@ import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -49,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
@@ -109,6 +111,7 @@ fun HomeTab(
     resetSignal: Int,
     modifier: Modifier = Modifier,
     photo: ImmichBackgroundState = ImmichBackgroundState(),
+    calendarPanel: (@Composable () -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf<Spotlight?>(null) }
     val heroItem = focused ?: sections.firstOrNull()?.let { firstSpotlightOf(it) }
@@ -119,11 +122,13 @@ fun HomeTab(
         if (photoFile != null) PhotoBackground(photoFile, photo.fit) else HeroBackground(heroItem)
         Column(Modifier.fillMaxSize()) {
             Spacer(Modifier.height(TopBarClearance))
-            HeroInfo(
-                item = heroItem,
-                modifier = Modifier.padding(start = RowEdgePadding, end = 380.dp),
-            )
-            Spacer(Modifier.weight(1f))
+            // The hero owns only the remaining space; long app labels cannot move the rows.
+            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
+                Row(Modifier.fillMaxSize().padding(start = RowEdgePadding, end = 40.dp)) {
+                    HeroInfo(item = heroItem, modifier = Modifier.weight(1f).padding(end = 24.dp))
+                    if (calendarPanel != null) Box(Modifier.width(220.dp)) { calendarPanel() }
+                }
+            }
             SectionsList(
                 sections = sections,
                 onFocus = { focused = it },
@@ -186,14 +191,17 @@ private fun HeroInfo(item: Spotlight?, modifier: Modifier = Modifier) {
                     text = current.subtitle,
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = current.title,
-                    fontSize = 40.sp,
+                    fontSize = 36.sp,
                     fontWeight = FontWeight.Bold,
-                    lineHeight = 44.sp,
+                    lineHeight = 40.sp,
                     color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 3,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 if (current.metadata != null) {
                     Text(
@@ -201,6 +209,8 @@ private fun HeroInfo(item: Spotlight?, modifier: Modifier = Modifier) {
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f),
                         modifier = Modifier.padding(top = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 if (current.description != null) {

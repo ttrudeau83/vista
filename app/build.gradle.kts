@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.2.0-immich-preview"
+        versionCode = 3
+        versionName = "0.3.0-family-home"
     }
 
     buildTypes {
@@ -67,6 +67,10 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation("net.sf.biweekly:biweekly:0.6.8") {
+        // Plain iCalendar feeds do not need optional jCal/JSON support.
+        exclude(group = "com.fasterxml.jackson.core", module = "jackson-core")
+    }
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")

@@ -23,13 +23,22 @@ class MainActivity : ComponentActivity() {
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
+            val use24Hour by settingsViewModel.use24Hour.collectAsStateWithLifecycle()
+            val screensaverClock by settingsViewModel.screensaverClock.collectAsStateWithLifecycle()
             val dark = when (themeMode) {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
                 ThemeMode.AUTO -> isSystemInDarkTheme()
             }
             VistaTheme(dark = dark) {
-                VistaRoot(themeMode = themeMode, onCycleTheme = settingsViewModel::cycleTheme)
+                VistaRoot(
+                    themeMode = themeMode,
+                    onCycleTheme = settingsViewModel::cycleTheme,
+                    use24Hour = use24Hour,
+                    onToggleClockFormat = settingsViewModel::toggleClockFormat,
+                    screensaverClock = screensaverClock,
+                    onToggleScreensaverClock = settingsViewModel::toggleScreensaverClock,
+                )
             }
         }
     }

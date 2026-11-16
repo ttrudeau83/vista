@@ -72,14 +72,20 @@ object ImmichProtocol {
     fun firstSearchImage(json: String): String? = JSONObject(json).optJSONObject("assets")
         ?.optJSONArray("items")?.let(::firstImage)
 
+    fun searchImages(json: String): List<String> = JSONObject(json).optJSONObject("assets")
+        ?.optJSONArray("items")?.let(::images).orEmpty()
+
     private fun firstImage(assets: JSONArray): String? {
+        return images(assets).firstOrNull()
+    }
+
+    private fun images(assets: JSONArray): List<String> = buildList {
         for (index in 0 until assets.length()) {
             val asset = assets.optJSONObject(index) ?: continue
             if (asset.optString("type") != "IMAGE" || asset.optBoolean("isTrashed", false)) continue
-            id(asset.optString("id"))?.let { return it }
+            id(asset.optString("id"))?.let(::add)
         }
-        return null
-    }
+    }.distinct()
 
     fun buckets(json: String): List<String> {
         val values = JSONArray(json)
@@ -92,19 +98,34 @@ object ImmichProtocol {
     }
 
     fun firstBucketImage(json: String): String? {
+        return bucketImages(json).firstOrNull()
+    }
+
+    fun bucketImages(json: String): List<String> {
         val bucket = JSONObject(json)
-        val ids = bucket.optJSONArray("id") ?: return null
-        val images = bucket.optJSONArray("isImage") ?: return null
-        val trashed = bucket.optJSONArray("isTrashed") ?: return null
-        if (ids.length() != images.length() || ids.length() != trashed.length()) return null
-        for (index in 0 until ids.length()) {
-            if (images.opt(index) != true || trashed.opt(index) != false) continue
-            id(ids.optString(index))?.let { return it }
-        }
-        return null
+        val ids = bucket.optJSONArray("id") ?: return emptyList()
+        val images = bucket.optJSONArray("isImage") ?: return emptyList()
+        val trashed = bucket.optJSONArray("isTrashed") ?: return emptyList()
+        if (ids.length() != images.length() || ids.length() != trashed.length()) return emptyList()
+        return buildList {
+            for (index in 0 until ids.length()) {
+                if (images.opt(index) != true || trashed.opt(index) != false) continue
+                id(ids.optString(index))?.let(::add)
+            }
+        }.distinct()
     }
 
     internal fun id(value: String): String? = try {
         UUID.fromString(value).toString().takeIf { it.equals(value, ignoreCase = true) }
     } catch (_: IllegalArgumentException) { null }
+}
+
+/** Never immediately repeat when the available candidates include another valid image. */
+object PhotoSequence {
+    fun chooseNext(candidates: List<String>, previous: String?, randomIndex: Int): String? {
+        val unique = candidates.filter { ImmichProtocol.id(it) != null }.distinct()
+        val choices = unique.filter { it != previous }.ifEmpty { unique }
+        if (choices.isEmpty()) return null
+        return choices[Math.floorMod(randomIndex, choices.size)]
+    }
 }

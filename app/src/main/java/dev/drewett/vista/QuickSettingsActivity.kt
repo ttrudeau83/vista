@@ -26,6 +26,8 @@ class QuickSettingsActivity : ComponentActivity() {
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
+            val use24Hour by settingsViewModel.use24Hour.collectAsStateWithLifecycle()
+            val screensaverClock by settingsViewModel.screensaverClock.collectAsStateWithLifecycle()
             val dark = when (themeMode) {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
@@ -40,6 +42,10 @@ class QuickSettingsActivity : ComponentActivity() {
                     themeMode = themeMode,
                     onCycleTheme = settingsViewModel::cycleTheme,
                     onDismiss = { finish() },
+                    use24Hour = use24Hour,
+                    onToggleClockFormat = settingsViewModel::toggleClockFormat,
+                    screensaverClock = screensaverClock,
+                    onToggleScreensaverClock = settingsViewModel::toggleScreensaverClock,
                 )
             }
         }

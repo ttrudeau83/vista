@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.util.UUID
+import kotlin.random.Random
 
 /** Shared photo source for the home screen; network and disk work never run on Main. */
 class ImmichRepository private constructor(context: Context) {
@@ -33,6 +34,10 @@ class ImmichRepository private constructor(context: Context) {
     private val mutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var saved: SavedImmich? = null
+    private var sequenceNamespace: String? = null
+    private var sequenceCandidates = emptyList<String>()
+    private var sequenceRemaining = emptyList<String>()
+    private var sequencePrevious: String? = null
     private val _config = MutableStateFlow(ImmichConfig())
     val config: StateFlow<ImmichConfig> = _config.asStateFlow()
     private val _photoRevision = MutableStateFlow(0L)
@@ -105,7 +110,19 @@ class ImmichRepository private constructor(context: Context) {
     }
 
     /** Returns the private last-good file immediately, unless explicitly asked to refresh. */
-    suspend fun photo(refresh: Boolean = false): File? = io {
+    suspend fun photo(refresh: Boolean = false): File? = loadPhoto(refresh, advance = false)
+
+    /** A different album photo for the system screensaver; uses the same bounded private cache. */
+    suspend fun nextPhoto(): File? = loadPhoto(refresh = true, advance = true)
+
+    /** Offline slides can alternate the retained successful photos without issuing network requests. */
+    suspend fun cachedPhoto(excluding: File? = null): File? = io {
+        val namespace = saved?.namespace ?: return@io null
+        val files = cachedFiles(File(root, namespace))
+        files.firstOrNull { it != excluding } ?: files.firstOrNull()
+    }
+
+    private suspend fun loadPhoto(refresh: Boolean, advance: Boolean): File? = io {
         val connection = saved ?: return@io null
         val albumId = connection.albumId ?: return@io null
         val namespace = connection.namespace ?: return@io null
@@ -117,7 +134,7 @@ class ImmichRepository private constructor(context: Context) {
         try {
             val client = ImmichClient(connection.server, connection.key)
             withTimeout(30_000) {
-                val imageId = client.firstImage(albumId)
+                val imageId = if (advance) nextAsset(client, albumId, namespace) else client.firstImage(albumId)
                 staging.outputStream().use { client.image(imageId, it) }
             }
             currentCoroutineContext().ensureActive()
@@ -145,6 +162,20 @@ class ImmichRepository private constructor(context: Context) {
         } finally { staging.delete() }
     }
 
+    private suspend fun nextAsset(client: ImmichClient, albumId: String, namespace: String): String {
+        if (sequenceNamespace != namespace || sequenceRemaining.isEmpty()) {
+            if (sequenceNamespace != namespace) sequencePrevious = null
+            sequenceNamespace = namespace
+            sequenceCandidates = client.imageCandidates(albumId)
+            sequenceRemaining = sequenceCandidates
+        }
+        val chosen = PhotoSequence.chooseNext(sequenceRemaining, sequencePrevious, Random.nextInt())
+            ?: throw ImmichException("No supported photos were found in this album.")
+        sequenceRemaining = sequenceRemaining.filter { it != chosen }
+        sequencePrevious = chosen
+        return chosen
+    }
+
     suspend fun disconnect() = io {
         vault.delete()
         saved = null
@@ -165,6 +196,10 @@ class ImmichRepository private constructor(context: Context) {
     }
 
     private fun purgePhotos() {
+        sequenceNamespace = null
+        sequenceCandidates = emptyList()
+        sequenceRemaining = emptyList()
+        sequencePrevious = null
         if (root.exists()) root.walkTopDown().filter { it.isFile }.forEach {
             imageLoader.memoryCache?.remove(MemoryCache.Key(it.absolutePath))
         }
