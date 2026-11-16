@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import dev.drewett.vista.MusicSettingsActivity
+import dev.drewett.vista.ui.home.railBoundary
+import dev.drewett.vista.ui.home.panelFocus
 import dev.drewett.vista.R
 import dev.drewett.vista.data.music.*
 import dev.drewett.vista.ui.components.focusPop
@@ -115,7 +117,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
     val channels=(state.artists+shelves.flatMap { it.cards }.filter { it.browseId?.startsWith("UC")==true }).distinctBy { it.browseId }
     val detail=location.page==MusicPage.DETAIL || location.page==MusicPage.QUEUE
     val detailTracks=if(location.page==MusicPage.QUEUE) queue else location.tracks
-    Column(Modifier.fillMaxSize().padding(start=36.dp,end=36.dp,top=106.dp,bottom=if(hasPlayer) 82.dp else 22.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().padding(start=36.dp,end=36.dp,top=28.dp,bottom=if(hasPlayer) 82.dp else 22.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth().height(134.dp),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -129,7 +131,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                     Button(onClick={
                         if(detail && detailTracks.isNotEmpty()) onPlay(detailTracks,0)
                         else featured?.let { openCard(it,true) } ?: state.playlists.firstOrNull()?.let { playlist -> model.playlist(playlist) { onPlay(it.tracks,0) } }
-                    },enabled=!busy && (detailTracks.isNotEmpty() || featured!=null || state.playlists.isNotEmpty())) {
+                    },enabled=!busy && (detailTracks.isNotEmpty() || featured!=null || state.playlists.isNotEmpty()),modifier=Modifier.railBoundary()) {
                         MusicIcon(R.drawable.ic_media_play,"",18);Spacer(Modifier.width(6.dp));Text(if(detail) "Play all" else "Play my mix")
                     }
                     Button(onClick={ navigate(MusicLocation(MusicPage.LIBRARY,"Your library")) }) { MusicIcon(R.drawable.ic_nav_apps,"",18);Spacer(Modifier.width(6.dp));Text("Browse library") }
@@ -150,7 +152,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
         LazyColumn(state=rows,modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(18.dp),contentPadding=PaddingValues(6.dp)) {
             if(detail) {
                 itemsIndexed(detailTracks,key={ index,track -> "${track.id}:$index" }) { index,track ->
-                    Surface(onClick={ onPlay(detailTracks,index) },modifier=Modifier.fillMaxWidth().then(if(index==0) Modifier.focusRequester(playlistFocus).then(sectionKeys(null,-1 to heroFocus)) else Modifier).onFocusChanged { if(it.hasFocus) focusSection=1 },
+                    Surface(onClick={ onPlay(detailTracks,index) },modifier=Modifier.fillMaxWidth().railBoundary().then(if(index==0) Modifier.focusRequester(playlistFocus).railBoundary().then(sectionKeys(null,-1 to heroFocus)) else Modifier).onFocusChanged { if(it.hasFocus) focusSection=1 },
                         colors=ClickableSurfaceDefaults.colors(containerColor=if(queue.getOrNull(queueIndex)?.id==track.id) Color(0xFF253C60) else Color(0x66172439),focusedContainerColor=Color(0xFFCDDFFF),focusedContentColor=Color(0xFF0B1729))) {
                         Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
                             Text("${index+1}",style=MaterialTheme.typography.labelLarge,modifier=Modifier.width(28.dp))
@@ -167,14 +169,14 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                         LazyRow(Modifier.focusGroup().then(sectionKeys(1 to channelFocus,-1 to heroFocus)).onFocusChanged { if(it.hasFocus) focusSection=1 },horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
                             if(location.page==MusicPage.LIBRARY || firstShelf==null) {
                                 itemsIndexed(state.playlists,key={ _,p -> p.id }) { index,p ->
-                                    MusicArtwork(p.title,p.thumbnail,"${p.count} tracks",if(index==0) Modifier.focusRequester(playlistFocus) else Modifier) {
+                                    MusicArtwork(p.title,p.thumbnail,"${p.count} tracks",if(index==0) Modifier.focusRequester(playlistFocus).railBoundary() else Modifier) {
                                         model.playlist(p) { loaded -> navigate(MusicLocation(MusicPage.DETAIL,p.title,p.thumbnail,tracks=loaded.tracks)) }
                                     }
                                 }
                             } else itemsIndexed(firstShelf.cards,key={ index,c -> "${c.browseId}:${c.playlistId}:${c.videoId}:$index" }) { index,c ->
-                                MusicArtwork(c.title,c.thumbnail,"Mix · Playlist",if(index==0) Modifier.focusRequester(playlistFocus) else Modifier) { openCard(c) }
+                                MusicArtwork(c.title,c.thumbnail,"Mix · Playlist",if(index==0) Modifier.focusRequester(playlistFocus).railBoundary() else Modifier) { openCard(c) }
                             }
-                            if((location.page==MusicPage.LIBRARY || firstShelf==null) && state.playlists.isEmpty()) item { Button(onClick=model::refresh,modifier=Modifier.focusRequester(playlistFocus)) { Text("Refresh library") } }
+                            if((location.page==MusicPage.LIBRARY || firstShelf==null) && state.playlists.isEmpty()) item { Button(onClick=model::refresh,modifier=Modifier.focusRequester(playlistFocus).railBoundary()) { Text("Refresh library") } }
                         }
                     }
                 }
@@ -184,14 +186,14 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                         LazyRow(Modifier.focusGroup().then(sectionKeys(null,0 to playlistFocus)).onFocusChanged { if(it.hasFocus) focusSection=2 },horizontalArrangement=Arrangement.spacedBy(22.dp),contentPadding=PaddingValues(6.dp)) {
                             itemsIndexed(channels,key={ index,c -> "${c.browseId}:$index" }) { index,c ->
                                 Column(Modifier.width(90.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                                    Surface(onClick={ openCard(c) },modifier=Modifier.size(70.dp).then(if(index==0) Modifier.focusRequester(channelFocus) else Modifier),shape=ClickableSurfaceDefaults.shape(CircleShape)) {
+                                    Surface(onClick={ openCard(c) },modifier=Modifier.panelFocus().size(70.dp).then(if(index==0) Modifier.focusRequester(channelFocus).railBoundary() else Modifier),shape=ClickableSurfaceDefaults.shape(CircleShape)) {
                                         AsyncImage(c.thumbnail,c.title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
                                     }
                                     Text(c.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.labelMedium)
                                 }
                             }
                             if(channels.isEmpty()) item {
-                                Button(onClick=model::refresh,enabled=!busy,modifier=Modifier.focusRequester(channelFocus)) { Text("Refresh channels") }
+                                Button(onClick=model::refresh,enabled=!busy,modifier=Modifier.focusRequester(channelFocus).railBoundary()) { Text("Refresh channels") }
                                 Text("Follow artists in YouTube Music to add them here.",style=MaterialTheme.typography.bodyMedium)
                             }
                         }
@@ -216,7 +218,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
 
 @Composable
 private fun MusicArtwork(title:String,image:String?,subtitle:String,modifier:Modifier=Modifier,onClick:()->Unit) {
-    Surface(onClick=onClick,modifier=modifier.width(204.dp).height(126.dp).focusPop(),shape=ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
+    Surface(onClick=onClick,modifier=modifier.panelFocus().width(204.dp).height(126.dp).focusPop(),shape=ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
         colors=ClickableSurfaceDefaults.colors(containerColor=Color(0xFF20304A),focusedContainerColor=Color(0xFF314D7A))) {
         Box(Modifier.fillMaxSize()) {
             AsyncImage(image,title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
@@ -244,8 +246,8 @@ fun MusicPlayerBar(track:MusicTrack,isPlaying:Boolean,canPrevious:Boolean,canNex
             Text(track.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyLarge)
             Text(if(isPlaying) "Now playing" else "Paused",color=Color(0xFFADBED9),style=MaterialTheme.typography.labelSmall)
         }
-        Button(onClick=onPrevious,enabled=canPrevious,contentPadding=PaddingValues(10.dp)) { MusicIcon(R.drawable.ic_media_previous,"Previous track") }
-        Button(onClick=onToggle,contentPadding=PaddingValues(10.dp)) { MusicIcon(if(isPlaying) R.drawable.ic_media_pause else R.drawable.ic_media_play,if(isPlaying) "Pause" else "Play") }
+        Button(onClick=onPrevious,enabled=canPrevious,contentPadding=PaddingValues(10.dp),modifier=Modifier.railBoundary()) { MusicIcon(R.drawable.ic_media_previous,"Previous track") }
+        Button(onClick=onToggle,contentPadding=PaddingValues(10.dp),modifier=if(!canPrevious) Modifier.railBoundary() else Modifier) { MusicIcon(if(isPlaying) R.drawable.ic_media_pause else R.drawable.ic_media_play,if(isPlaying) "Pause" else "Play") }
         Button(onClick=onNext,enabled=canNext,contentPadding=PaddingValues(10.dp)) { MusicIcon(R.drawable.ic_media_next,"Next track") }
         Button(onClick=onQueue) { MusicIcon(R.drawable.ic_media_queue,"");Spacer(Modifier.width(6.dp));Text("Queue · $queueSize") }
         Button(onClick=onPhotos) { MusicIcon(R.drawable.ic_nav_photos,"");Spacer(Modifier.width(6.dp));Text("Photos") }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import dev.drewett.vista.ui.home.panelFocus
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -38,7 +39,7 @@ fun ContentCardView(
     flatFocus: Boolean = false,
     aspectRatio: Float = 16f / 9f,
 ) {
-    Column(modifier) {
+    Column(modifier.panelFocus()) {
         Surface(
             onClick = onClick,
             modifier = Modifier.focusPop(enabled = !flatFocus).fillMaxWidth().aspectRatio(aspectRatio),

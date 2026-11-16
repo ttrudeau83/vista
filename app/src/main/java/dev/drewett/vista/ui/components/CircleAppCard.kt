@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import dev.drewett.vista.ui.home.panelFocus
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -27,7 +28,7 @@ fun CircleAppCard(
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.focusPop(enabled = !flatFocus).appActivationKeys(onClick, onLongClick).aspectRatio(1f),
+        modifier = modifier.panelFocus().focusPop(enabled = !flatFocus).appActivationKeys(onClick, onLongClick).aspectRatio(1f),
         shape = ClickableSurfaceDefaults.shape(CircleShape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         colors = ClickableSurfaceDefaults.colors(

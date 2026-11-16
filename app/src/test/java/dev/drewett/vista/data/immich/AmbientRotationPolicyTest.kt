@@ -6,6 +6,12 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
 class AmbientRotationPolicyTest {
+    @Test fun readyClipsGetAnOccasionalTurnWithoutRepeatingShownVideos() {
+        val photo=PhotoAsset("photo",cachedFile=temp.newFile("photo"))
+        val video=PhotoAsset("video",cachedFile=temp.newFile("video"),kind=MediaKind.VIDEO)
+        assertEquals(video,AmbientRotationPolicy.ready(listOf(photo,video),emptySet(),null,0,preferVideo=true))
+        assertEquals(photo,AmbientRotationPolicy.ready(listOf(photo,video),setOf(video.id),null,0,preferVideo=true))
+    }
     @Test fun largeVideosCannotCauseEndlessOriginalEvictionAndRedownload() {
         assertFalse(PhotoCachePolicy.canWarm(512L*1024*1024,true))
         assertTrue(PhotoCachePolicy.canWarm(512L*1024*1024,false))

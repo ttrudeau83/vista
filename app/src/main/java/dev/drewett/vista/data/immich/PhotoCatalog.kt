@@ -73,9 +73,10 @@ object AmbientRotationPolicy {
     fun unseen(assets: List<PhotoAsset>, shown: Set<String>): List<PhotoAsset> =
         assets.filter { it.id !in shown && !it.hidden }.distinctBy { it.id }
 
-    fun ready(assets: List<PhotoAsset>, shown: Set<String>, previous: String?, randomIndex: Int): PhotoAsset? {
+    fun ready(assets: List<PhotoAsset>, shown: Set<String>, previous: String?, randomIndex: Int,preferVideo:Boolean=false): PhotoAsset? {
         val ready = unseen(assets, shown).filter { it.cachedFile?.isFile == true && it.id != previous }
-        return ready.takeIf { it.isNotEmpty() }?.get(Math.floorMod(randomIndex, ready.size))
+        val choices=if(preferVideo) ready.filter { it.isVideo }.ifEmpty { ready } else ready
+        return choices.takeIf { it.isNotEmpty() }?.get(Math.floorMod(randomIndex, choices.size))
     }
 
     fun cycleComplete(assets: List<PhotoAsset>, shown: Set<String>, catalogComplete: Boolean): Boolean =

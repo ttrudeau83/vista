@@ -100,7 +100,7 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     var overlayAwake by remember { mutableStateOf(true) }
     var overlayInteraction by remember { mutableStateOf(0) }
     var revealRelease by remember { mutableStateOf(false) }
-    val overlayAlpha by animateFloatAsState(if(overlayAwake) 1f else 0.16f,tween(650),label="music overlay")
+    val overlayAlpha by animateFloatAsState(if(overlayAwake) 1f else 0f,tween(650),label="music overlay")
     val ambientExitFocus=remember { FocusRequester() }
     val nextTrack=rememberUpdatedState<()->Unit> {
         if(playbackIndex<playbackQueue.lastIndex) skip(1) else isPlaying=false
@@ -123,6 +123,9 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     if(ambient && playing!=null && trackPlayer!=null) {
         Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { event ->
             if(event.type==KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount==0) {
+                if(event.nativeKeyEvent.keyCode in setOf(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,android.view.KeyEvent.KEYCODE_MEDIA_NEXT,android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)) {
+                    overlayAwake=true;overlayInteraction++
+                }
                 when(event.nativeKeyEvent.keyCode) {
                     android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { togglePlayback();return@onPreviewKeyEvent true }
                     android.view.KeyEvent.KEYCODE_MEDIA_NEXT -> { skip(1);return@onPreviewKeyEvent true }
@@ -134,22 +137,30 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
             else if(event.type==KeyEventType.KeyDown) {
                 val wasFaded=!overlayAwake
                 overlayAwake=true;overlayInteraction++
-                if(select && (wasFaded || revealRelease)) { revealRelease=true;true } else false
+                val direction=event.key in setOf(Key.DirectionLeft,Key.DirectionRight,Key.DirectionUp,Key.DirectionDown)
+                if(select && (wasFaded || revealRelease)) { revealRelease=true;true } else wasFaded && direction
             } else false
         }) {
             MusicAmbientPhotos(Modifier.fillMaxSize().zIndex(if(hideVideo) 1f else -1f)) { ambient=false }
-            Box(Modifier.align(Alignment.BottomEnd).padding(end=32.dp,bottom=172.dp)) {
-                trackPlayer(Modifier.width(384.dp).height(216.dp),!hideVideo)
+            Box(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=20.dp)) {
+                trackPlayer(Modifier.width(224.dp).height(126.dp),!hideVideo)
             }
-            Column(Modifier.align(Alignment.BottomEnd).padding(32.dp).width(384.dp).zIndex(2f).graphicsLayer { alpha=overlayAlpha },
+            Column(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=if(hideVideo) 24.dp else 162.dp).width(320.dp).zIndex(2f).graphicsLayer { alpha=overlayAlpha },
                 horizontalAlignment=Alignment.End,verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                if(!hideVideo) Spacer(Modifier.height(216.dp))
+
                 Text(playing!!.title,color=Color.White.copy(alpha=0.85f),maxLines=1,overflow=TextOverflow.Ellipsis,textAlign=TextAlign.End,
                     modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium.copy(shadow=Shadow(Color.Black.copy(alpha=0.6f),Offset(0f,1f),3f)))
                 val buttonColors=ButtonDefaults.colors(containerColor=Color.White.copy(alpha=0.04f),contentColor=Color.White,
                     focusedContainerColor=Color.White.copy(alpha=0.18f),focusedContentColor=Color.White)
-                Button(onClick={ hideVideo=!hideVideo },colors=buttonColors) { Text(if(hideVideo) "Show video" else "Hide video") }
-                Button(onClick={ ambient=false },colors=buttonColors,modifier=Modifier.focusRequester(ambientExitFocus)) { Text("Return to music") }
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    Button(onClick={ skip(-1) },enabled=playbackIndex>0,colors=buttonColors,contentPadding=androidx.compose.foundation.layout.PaddingValues(10.dp)) { MusicIcon(dev.drewett.vista.R.drawable.ic_media_previous,"Previous track") }
+                    Button(onClick=::togglePlayback,colors=buttonColors,contentPadding=androidx.compose.foundation.layout.PaddingValues(10.dp)) { MusicIcon(if(isPlaying) dev.drewett.vista.R.drawable.ic_media_pause else dev.drewett.vista.R.drawable.ic_media_play,if(isPlaying) "Pause" else "Play") }
+                    Button(onClick={ skip(1) },enabled=playbackIndex<playbackQueue.lastIndex,colors=buttonColors,contentPadding=androidx.compose.foundation.layout.PaddingValues(10.dp)) { MusicIcon(dev.drewett.vista.R.drawable.ic_media_next,"Next track") }
+                }
+                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Button(onClick={ hideVideo=!hideVideo },colors=buttonColors) { Text(if(hideVideo) "Show video" else "Hide video") }
+                    Button(onClick={ ambient=false },colors=buttonColors,modifier=Modifier.focusRequester(ambientExitFocus)) { Text("Return to music") }
+                }
             }
         }
     } else {
@@ -165,7 +176,7 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
             MusicBrowser(model,contentFocus,playing!=null,playbackQueue,playbackIndex,queueRequest,
                 onPlay={ tracks,index -> if(tracks.isNotEmpty()) { playerController.reset();playbackQueue=tracks.toList();playbackIndex=index;isPlaying=true } },onBackRoot=onRequestTopBar,navigation=browserNavigation)
             if(playing!=null && trackPlayer!=null) {
-                Box(Modifier.align(Alignment.TopEnd).padding(top=106.dp,end=36.dp)) {
+                Box(Modifier.align(Alignment.TopEnd).padding(top=28.dp,end=36.dp)) {
                     trackPlayer(Modifier.width(280.dp).height(150.dp),true)
                 }
                 MusicPlayerBar(playing,isPlaying,playbackIndex>0,playbackIndex<playbackQueue.lastIndex,playbackQueue.size,

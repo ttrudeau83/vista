@@ -1,5 +1,7 @@
 package dev.drewett.vista.ui.photos
 
+import dev.drewett.vista.ui.home.railBoundary
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -42,7 +44,7 @@ fun PhotosScreen(photo: ImmichBackgroundState, contentFocus: FocusRequester) {
         Column(Modifier.align(Alignment.BottomStart).padding(40.dp),verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(config.albumName ?: "Immich Photos",color = Color.White)
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                Button(onClick = { context.startActivity(android.content.Intent(context,dev.drewett.vista.PhotoGalleryActivity::class.java)) },modifier = Modifier.focusRequester(contentFocus)) { Text("Browse media") }
+                Button(onClick = { context.startActivity(android.content.Intent(context,dev.drewett.vista.PhotoGalleryActivity::class.java)) },modifier = Modifier.focusRequester(contentFocus).railBoundary()) { Text("Browse media") }
                 Button(onClick = view::nextMedia) { Text("Next") }
                 Button(onClick = view::showOptions,enabled = current != null) { Text("Media options") }
                 Button(onClick = { context.startActivity(android.content.Intent(context,dev.drewett.vista.PhotoSlideshowActivity::class.java)) }) { Text("Start screensaver") }

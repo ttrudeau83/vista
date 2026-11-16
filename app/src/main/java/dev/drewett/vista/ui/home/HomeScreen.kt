@@ -1,5 +1,8 @@
 package dev.drewett.vista.ui.home
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.withFrameNanos
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -75,9 +78,21 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     var menuApp by remember { mutableStateOf<dev.drewett.vista.domain.AppEntry?>(null) }
     var musicAmbient by remember { mutableStateOf(false) }
     var freeplayError by remember { mutableStateOf<String?>(null) }
+    var railFocused by remember { mutableStateOf(false) }
+    var panelEntry by remember { mutableStateOf(0) }
     val topBarFocus = remember { FocusRequester() }
     val contentFocus = remember { FocusRequester() }
+    val panelReturnFocus=remember { mutableStateOf<FocusRequester?>(null) }
+    var pendingReturnFocus by remember { mutableStateOf<FocusRequester?>(null) }
     LaunchedEffect(Unit) { runCatching { topBarFocus.requestFocus() } }
+    LaunchedEffect(panelEntry) {
+        if(panelEntry>0) {
+            withFrameNanos { }
+            runCatching { (pendingReturnFocus ?: contentFocus).requestFocus() }.onFailure { runCatching { contentFocus.requestFocus() } }
+            pendingReturnFocus=null
+        }
+    }
+    BackHandler(!railFocused && !musicAmbient && !searchOpen && menuApp==null) { runCatching { topBarFocus.requestFocus() } }
     val resetSignal by VistaSignals.reset.collectAsStateWithLifecycle()
     val refreshSignal by VistaSignals.refresh.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -125,7 +140,9 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
         }
     }
 
+    CompositionLocalProvider(LocalNavigationRail provides topBarFocus,LocalPanelReturnFocus provides panelReturnFocus) {
     Box(Modifier.fillMaxSize().vistaBackdrop()) {
+        Box(Modifier.fillMaxSize().padding(start=if(musicAmbient) 0.dp else 84.dp)) {
         when (tab) {
             VistaTab.FOR_YOU ->
                 if (!loaded) Loading() else if (sections.isEmpty()) EmptyContent("No launchable apps or published content.") else HomeTab(
@@ -180,29 +197,29 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
             )
         }
 
-        if (!musicAmbient) VistaTopBar(
-            selected = tab,
-            onSelect = { tab = it },
-            onActivate = { tab = it; if (it == VistaTab.FREEPLAY) openFreeplay() },
-            onOpenQuickSettings = onOpenQuickSettings,
-            onOpenSearch = { searchOpen = true },
-            modifier = Modifier.align(Alignment.TopStart),
-            barFocusRequester = topBarFocus,
-            contentFocus = contentFocus,
-            use24Hour = use24Hour,
-        )
-
+        }
 
         if (searchOpen) {
+            Box(Modifier.fillMaxSize().padding(start=84.dp)) {
             SearchScreen(
                 apps = apps,
                 content = allContent,
                 onLaunchApp = viewModel::launch,
                 onLaunchContent = viewModel::launchContent,
-                onDismiss = { searchOpen = false },
+                onDismiss = { searchOpen = false;runCatching { topBarFocus.requestFocus() } },
             )
         }
 
+        }
+        if(!musicAmbient) VistaNavigationRail(selected=tab,railFocus=topBarFocus,
+            onEnter={ chosen ->
+                pendingReturnFocus=if(chosen==tab) panelReturnFocus.value else null
+                if(chosen!=tab) panelReturnFocus.value=null
+                searchOpen=false;tab=chosen
+                if(chosen==VistaTab.FREEPLAY) openFreeplay() else panelEntry++
+            },onSearch={ searchOpen=true },onSettings=onOpenQuickSettings,
+            onFocus={ railFocused=it },use24Hour=use24Hour,modifier=Modifier.align(Alignment.CenterStart))
+        BackHandler(railFocused && !searchOpen && menuApp==null) { pendingReturnFocus=panelReturnFocus.value;panelEntry++ }
         AppContextMenu(
             app = menuApp,
             isFavourite = menuApp?.packageName in favouritesSet,
@@ -213,6 +230,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
             onUninstall = viewModel::uninstall,
         )
     }
+}
 }
 
 @Composable

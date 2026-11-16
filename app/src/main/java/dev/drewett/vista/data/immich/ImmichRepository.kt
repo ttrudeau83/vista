@@ -43,6 +43,9 @@ class ImmichRepository private constructor(context: Context) {
     private var currentId: String? = null
     private var ambientId: String? = null
     private var manualAmbientId: String? = null
+    private var photosSinceVideo=0
+    private val _ambientVideoStarts=MutableStateFlow(0)
+    val ambientVideoStarts=_ambientVideoStarts.asStateFlow()
     private var shown = emptySet<String>()
     private val retryAfter = mutableMapOf<String, Long>()
     private var catalogComplete = false
@@ -181,7 +184,7 @@ class ImmichRepository private constructor(context: Context) {
                 retryAfter.clear()
                 writeIndexLocked()
             }
-            val chosen = AmbientRotationPolicy.ready(eligible, shown, ambientId, Random.nextInt())
+            val chosen = AmbientRotationPolicy.ready(eligible, shown, ambientId, Random.nextInt(),preferVideo=photosSinceVideo>=3)
                 ?: return@withLock null
             ambientId = chosen.id
             chosen.cachedFile?.setLastModified(System.currentTimeMillis())
@@ -225,6 +228,9 @@ class ImmichRepository private constructor(context: Context) {
         awaitReady()
         mutex.withLock {
             if (ambientId == id && catalog.any { it.id == id } && id !in hidden) {
+                if(catalog.firstOrNull { it.id==id }?.isVideo==true) {
+                    photosSinceVideo=0;_ambientVideoStarts.value++
+                } else photosSinceVideo++
                 shown = shown + id
                 writeIndexLocked()
                 retireShownLocked()

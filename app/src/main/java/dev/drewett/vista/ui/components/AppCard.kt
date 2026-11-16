@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import dev.drewett.vista.ui.home.panelFocus
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
@@ -42,7 +43,7 @@ fun AppCard(
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.focusPop(enabled = !flatFocus).appActivationKeys(onClick, onLongClick).aspectRatio(16f / 9f),
+        modifier = modifier.panelFocus().focusPop(enabled = !flatFocus).appActivationKeys(onClick, onLongClick).aspectRatio(16f / 9f),
         shape = ClickableSurfaceDefaults.shape(CardShape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         colors = ClickableSurfaceDefaults.colors(

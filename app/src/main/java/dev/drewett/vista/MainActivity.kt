@@ -17,6 +17,15 @@ import dev.drewett.vista.ui.home.SettingsViewModel
 import dev.drewett.vista.ui.theme.VistaTheme
 
 class MainActivity : ComponentActivity() {
+    /** Read-only shell diagnostics; never emit IDs, URLs, credentials or media content. */
+    override fun dump(prefix:String,fd:java.io.FileDescriptor?,writer:java.io.PrintWriter,args:Array<out String>?) {
+        super.dump(prefix,fd,writer,args)
+        val repo=dev.drewett.vista.data.immich.ImmichRepository.get(this)
+        val assets=repo.gallery.value
+        writer.println("${prefix}VistaDiagnostics renderedVideoStarts=${repo.ambientVideoStarts.value}")
+        writer.println("${prefix}VistaDiagnostics photos=${assets.count { !it.isVideo }} videos=${assets.count { it.isVideo }} cachedVideos=${assets.count { it.isVideo && it.cachedFile?.isFile==true }} currentKind=${repo.currentAmbient.value?.kind ?: "NONE"} loading=${repo.loading.value}")
+        writer.println("${prefix}VistaDiagnostics status=${repo.status.value.orEmpty()}")
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)

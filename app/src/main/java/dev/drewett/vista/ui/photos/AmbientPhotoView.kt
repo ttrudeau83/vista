@@ -164,6 +164,10 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
     }
     fun nextMedia() { advanceSignal.trySend(Unit) }
     fun showOptions() { showPhotoMenu() }
+    override fun dispatchKeyEvent(event:KeyEvent):Boolean {
+        if(popup!=null && event.keyCode==KeyEvent.KEYCODE_BACK) return handleKey(event)
+        return super.dispatchKeyEvent(event)
+    }
     fun handleKey(event: KeyEvent): Boolean {
         val select = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER
         if (select && suppressRelease) { if (event.action == KeyEvent.ACTION_UP) suppressRelease = false; return true }
@@ -304,7 +308,7 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
     private fun musicActive(): Boolean = try { (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).isMusicActive } catch (_: Exception) { false }
     private fun nowPlaying(): String {
         if (!musicActive()) return ""
-        val fallback = if(player == null) "Music playing" else ""
+        val fallback = ""
         return try {
             val manager = context.getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
             val session = manager.getActiveSessions(ComponentName(context,VistaNotificationListenerService::class.java)).firstOrNull { it.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING }

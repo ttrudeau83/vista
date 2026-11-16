@@ -88,7 +88,7 @@ private val CardWidth = 232.dp
 private val ContentImageHeight = 132.dp
 private val IconSize = 104.dp
 private val RowEdgePadding = 48.dp
-private val TopBarClearance = 104.dp
+private val PanelTopPadding = 24.dp
 private val CardShape = RoundedCornerShape(14.dp)
 
 // Fires content focus once per process so tab sweeps don't get their focus stolen.
@@ -123,7 +123,7 @@ fun HomeTab(
         val photoFile = photo.file
         if (photoFile != null) PhotoBackground(photoFile, photo.fit) else HeroBackground(heroItem)
         Column(Modifier.fillMaxSize()) {
-            Spacer(Modifier.height(TopBarClearance))
+            Spacer(Modifier.height(PanelTopPadding))
             // The hero owns only the remaining space; long app labels cannot move the rows.
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                 Row(Modifier.fillMaxSize().padding(start = RowEdgePadding, end = 40.dp)) {
@@ -264,7 +264,7 @@ private fun SectionsList(
         modifier = modifier
             .fillMaxSize()
             .focusProperties {
-                exit = { direction -> if (direction == FocusDirection.Up) topBarFocus else FocusRequester.Default }
+                exit = { direction -> if (direction == FocusDirection.Up || direction == FocusDirection.Left) topBarFocus else FocusRequester.Default }
             },
         contentPadding = PaddingValues(top = 4.dp, bottom = 56.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -296,7 +296,9 @@ private fun SectionsList(
                                 .focusGroup()
                                 .focusProperties {
                                     exit = { dir ->
-                                        if (dir == FocusDirection.Left || dir == FocusDirection.Right) {
+                                        if (dir == FocusDirection.Left) {
+                                            topBarFocus
+                                        } else if(dir == FocusDirection.Right) {
                                             FocusRequester.Cancel
                                         } else {
                                             FocusRequester.Default
@@ -312,7 +314,7 @@ private fun SectionsList(
                                             onClick = { onLaunch(app) },
                                             onLongClick = { onAppLongPress(app) },
                                             flatFocus = true,
-                                            modifier = Modifier.size(IconSize).cardFocus { onFocus(app.toSpotlight()) },
+                                            modifier = Modifier.size(IconSize).then(if(itemIndex==0) Modifier.railBoundary() else Modifier).cardFocus { onFocus(app.toSpotlight()) },
                                         )
                                     }
                                 }
@@ -324,7 +326,7 @@ private fun SectionsList(
                                             onClick = { onLaunchContent(card) },
                                             flatFocus = true,
                                             aspectRatio = contentAspect,
-                                            modifier = Modifier.width(contentCardW).cardFocus { onFocus(card.toSpotlight(section.title)) },
+                                            modifier = Modifier.width(contentCardW).then(if(itemIndex==0) Modifier.railBoundary() else Modifier).cardFocus { onFocus(card.toSpotlight(section.title)) },
                                         )
                                     }
                                 }
