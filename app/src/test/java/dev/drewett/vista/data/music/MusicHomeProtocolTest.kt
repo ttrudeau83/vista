@@ -5,6 +5,21 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MusicHomeProtocolTest {
+    @Test fun subscribedChannelsRetainTheirOwnArtworkAndBrowseIdentity() {
+        val response=JSONObject("""{"items":[
+            {"snippet":{"title":"Music channel","resourceId":{"channelId":"UC_music"},"thumbnails":{"medium":{"url":"https://example.org/channel.jpg"}}}},
+            {"snippet":{"title":"Invalid","resourceId":{"channelId":"https://evil.invalid"}}}
+        ]}""")
+        val channel=MusicProtocol.subscriptions(response).single()
+        assertEquals("UC_music",channel.browseId);assertEquals("https://example.org/channel.jpg",channel.thumbnail)
+    }
+    @Test fun artistCardsBrowseTheirChannelInsteadOfStartingTheOverlayRadio() {
+        val response=JSONObject("""{"contents":[{"musicTwoRowItemRenderer":{"title":{"simpleText":"Artist"},"navigationEndpoint":{"browseEndpoint":{"browseId":"UC_artist"}},"thumbnailOverlay":{"watchPlaylistEndpoint":{"playlistId":"RD_radio"}}}}]}""")
+        val artist=MusicHomeProtocol.cards(response).single()
+        assertEquals("UC_artist",artist.browseId)
+        val (endpoint,body)=MusicHomeProtocol.destination(artist)
+        assertEquals("browse",endpoint);assertEquals("UC_artist",body.getString("browseId"))
+    }
     @Test fun homePreservesPersonalizedShelfTitlesAndMixEndpoints() {
         val json=JSONObject("""{"contents":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{
           "header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Mixed for you"}]}}},

@@ -18,14 +18,22 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.drewett.vista.data.music.MusicProtocol
 
+class YouTubePlaybackController {
+    internal var web:WebView?=null
+    @Volatile internal var wantsPlay=true
+    fun reset() { wantsPlay=true }
+    fun play() { wantsPlay=true;web?.evaluateJavascript("if(window.player){player.playVideo();}",null) }
+    fun pause() { wantsPlay=false;web?.evaluateJavascript("if(window.player){player.pauseVideo();}",null) }
+}
 /** OS WebView + official IFrame player; no stream extraction. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier,interactive:Boolean=true,onEnded:()->Unit={}) {
+fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier,interactive:Boolean=true,onEnded:()->Unit={},controller:YouTubePlaybackController?=null,onPlayingChanged:(Boolean)->Unit={}) {
     require(MusicProtocol.videoId(videoId))
     val context=LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     val ended=rememberUpdatedState(onEnded)
+    val changed=rememberUpdatedState(onPlayingChanged)
     val handler=remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     val web=remember {
         runCatching { WebView(context).apply {
@@ -38,6 +46,8 @@ fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier,interactive:
             settings.mixedContentMode=android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
             addJavascriptInterface(object {
                 @android.webkit.JavascriptInterface fun ended() { handler.post { ended.value() } }
+                @android.webkit.JavascriptInterface fun shouldPlay():Boolean=controller?.wantsPlay ?: true
+                @android.webkit.JavascriptInterface fun stateChanged(value:Int) { if(value==1 || value==2) handler.post { changed.value(value==1) } }
             },"VistaPlayback")
             webViewClient=object:WebViewClient() {
                 override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean {
@@ -57,9 +67,10 @@ fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier,interactive:
             if(event==Lifecycle.Event.ON_RESUME) web.onResume()
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer);handler.removeCallbacksAndMessages(null);web.removeJavascriptInterface("VistaPlayback");web.stopLoading();web.loadUrl("about:blank");web.destroy() }
+        onDispose { if(controller?.web===web) controller.web=null;lifecycle.removeObserver(observer);handler.removeCallbacksAndMessages(null);web.removeJavascriptInterface("VistaPlayback");web.stopLoading();web.loadUrl("about:blank");web.destroy() }
     }
     AndroidView(factory={ web },modifier=modifier,update={ view ->
+        controller?.web=view
         view.isFocusable=interactive
         view.isFocusableInTouchMode=interactive
         view.descendantFocusability=if(interactive) android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS else android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
@@ -67,7 +78,7 @@ fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier,interactive:
         if(view.tag!=videoId) {
             view.tag=videoId
             val origin="https://${context.packageName}"
-            val html="""<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:black"><div id="player"></div><script>var player;function onYouTubeIframeAPIReady(){player=new YT.Player('player',{width:'100%',height:window.innerHeight,videoId:'$videoId',playerVars:{origin:'$origin',autoplay:1,playsinline:1,controls:1},events:{onStateChange:function(e){if(e.data===0){VistaPlayback.ended();}}}});}</script><script src="https://www.youtube.com/iframe_api"></script></body></html>"""
+            val html="""<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:black"><div id="player"></div><script>var player;function onYouTubeIframeAPIReady(){player=new YT.Player('player',{width:'100%',height:window.innerHeight,videoId:'$videoId',playerVars:{origin:'$origin',autoplay:1,playsinline:1,controls:1},events:{onReady:function(){if(!VistaPlayback.shouldPlay()){player.pauseVideo();}},onStateChange:function(e){VistaPlayback.stateChanged(e.data);if(e.data===0){VistaPlayback.ended();}}}});}window.addEventListener("resize",function(){if(player&&player.setSize){player.setSize(window.innerWidth,window.innerHeight);}});</script><script src="https://www.youtube.com/iframe_api"></script></body></html>"""
             // Official API Client Identity requirement for local HTML WebView embeds.
             view.loadDataWithBaseURL(origin,html,"text/html","UTF-8",null)
         }

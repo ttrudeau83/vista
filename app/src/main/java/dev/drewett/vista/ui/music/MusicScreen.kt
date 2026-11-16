@@ -78,26 +78,35 @@ import dev.drewett.vista.ui.theme.vistaBackdrop
 import kotlinx.coroutines.delay
 
 @Composable
-fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},model:MusicViewModel=viewModel()) {
+fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},model:MusicViewModel=viewModel(),onRequestTopBar:()->Unit={}) {
     val context=LocalContext.current
     val state by model.state.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()
-    var playing by remember { mutableStateOf<MusicTrack?>(null) }
+    var playbackQueue by remember { mutableStateOf<List<MusicTrack>>(emptyList()) }
+    var playbackIndex by remember { mutableStateOf(-1) }
+    val playing=playbackQueue.getOrNull(playbackIndex)
+    var isPlaying by remember { mutableStateOf(true) }
+    var queueRequest by remember { mutableStateOf(0) }
+    val playerController=remember { YouTubePlaybackController() }
+    val browserNavigation=remember { MusicBrowserState() }
+    fun skip(delta:Int) {
+        MusicQueuePolicy.move(playbackQueue.size,playbackIndex,delta)?.let { playerController.reset();playbackIndex=it;isPlaying=true }
+    }
+    fun togglePlayback() { if(isPlaying) playerController.pause() else playerController.play();isPlaying=!isPlaying }
     var ambient by remember { mutableStateOf(false) }
     var hideVideo by remember { mutableStateOf(false) }
-    var musicHome by remember { mutableStateOf(true) }
+
     var overlayAwake by remember { mutableStateOf(true) }
     var overlayInteraction by remember { mutableStateOf(0) }
     var revealRelease by remember { mutableStateOf(false) }
     val overlayAlpha by animateFloatAsState(if(overlayAwake) 1f else 0.16f,tween(650),label="music overlay")
     val ambientExitFocus=remember { FocusRequester() }
     val nextTrack=rememberUpdatedState<()->Unit> {
-        val index=state.tracks.indexOfFirst { it.id==playing?.id }
-        if(index>=0 && index<state.tracks.lastIndex) playing=state.tracks[index+1]
+        if(playbackIndex<playbackQueue.lastIndex) skip(1) else isPlaying=false
     }
     val trackPlayer=playing?.let { track ->
-        remember(track.id) { movableContentOf<Modifier,Boolean> { playerModifier,interactive -> OfficialYouTubePlayer(track.id,playerModifier,interactive,onEnded={ nextTrack.value() }) } }
+        remember(track.id,playbackIndex) { movableContentOf<Modifier,Boolean> { playerModifier,interactive -> OfficialYouTubePlayer(track.id,playerModifier,interactive,onEnded={ nextTrack.value() },controller=playerController,onPlayingChanged={ isPlaying=it }) } }
     }
     LaunchedEffect(ambient) { onAmbientChanged(ambient);if(ambient) runCatching { ambientExitFocus.requestFocus() } }
     DisposableEffect(Unit) { onDispose { onAmbientChanged(false) } }
@@ -105,17 +114,21 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
         overlayAwake=true
         if(ambient) { delay(4000);overlayAwake=false }
     }
-    LaunchedEffect(state.playlist,state.tracks) {
-        if(state.tracks.isNotEmpty()) musicHome=false
-    }
     LaunchedEffect(state.authorized) {
-        if(!state.authorized) { ambient=false;playing=null }
+        if(!state.authorized) { ambient=false;playbackQueue=emptyList();playbackIndex=-1 }
         else if(state.playlists.isEmpty()) model.refresh()
     }
-    BackHandler(enabled=playing!=null) { if(ambient) ambient=false else playing=null }
+    BackHandler(enabled=ambient) { ambient=false }
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
     if(ambient && playing!=null && trackPlayer!=null) {
         Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { event ->
+            if(event.type==KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount==0) {
+                when(event.nativeKeyEvent.keyCode) {
+                    android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { togglePlayback();return@onPreviewKeyEvent true }
+                    android.view.KeyEvent.KEYCODE_MEDIA_NEXT -> { skip(1);return@onPreviewKeyEvent true }
+                    android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { skip(-1);return@onPreviewKeyEvent true }
+                }
+            }
             val select=event.key==Key.DirectionCenter || event.key==Key.Enter || event.key==Key.NumPadEnter
             if(event.type==KeyEventType.KeyUp && select && revealRelease) { revealRelease=false;true }
             else if(event.type==KeyEventType.KeyDown) {
@@ -140,77 +153,26 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
             }
         }
     } else {
-    Column(Modifier.fillMaxSize().padding(start=40.dp,end=40.dp,top=110.dp,bottom=20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement=Arrangement.spacedBy(18.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("Music",style=MaterialTheme.typography.headlineMedium)
-                Text(if(state.browserConnected) "YouTube Music · ${state.browserProfile.orEmpty()}" else state.channel?.let { "YouTube · ${it.title}" } ?: "Connect Blanktarget Records",style=MaterialTheme.typography.bodyLarge)
+        Box(Modifier.fillMaxSize().onPreviewKeyEvent { event ->
+            if(event.type!=KeyEventType.KeyDown || event.nativeKeyEvent.repeatCount!=0) false
+            else when(event.nativeKeyEvent.keyCode) {
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { togglePlayback();true }
+                android.view.KeyEvent.KEYCODE_MEDIA_NEXT -> { skip(1);true }
+                android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { skip(-1);true }
+                else -> false
             }
-            Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) },modifier=Modifier.focusRequester(contentFocus)) { Text("Music settings") }
-            if(state.authorized) Button(onClick=model::refresh,enabled=!busy) { Text("Refresh library") }
-        }
-        if(!state.authorized) {
-            Text("Your own playlist frontend is ready to connect. Add a Google OAuth TV client in Music settings, then authorize the Blanktarget Records channel.",style=MaterialTheme.typography.bodyLarge)
-            Text("Uses the official YouTube library and visible player. YouTube Music-specific recommendations and audio-only playback are not available through this API.",style=MaterialTheme.typography.bodyMedium)
-        }
-        state.pairing?.let { pair -> Text("Authorize at ${pair.verificationUrl} using ${pair.userCode}",style=MaterialTheme.typography.titleLarge) }
-        if(state.channels.size>1) Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-            state.channels.forEach { channel -> Button(onClick={ model.channel(channel) },enabled=!busy) { Text(channel.title) } }
-        }
-        val status=message ?: state.message
-        if(status!=null) Text(status,style=MaterialTheme.typography.bodyMedium)
-        if(busy || state.loading) Text("Loading…",style=MaterialTheme.typography.bodyMedium)
-        if(state.authorized && playing==null) {
-            Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                Button(onClick={ musicHome=true;model.refresh() },enabled=!busy) { Text("Home") }
-                Button(onClick={ musicHome=false }) { Text("Library") }
-            }
-            state.homeMessage?.let { Text(it,style=MaterialTheme.typography.bodyMedium) }
-        }
-        if(playing==null && musicHome && state.shelves.isNotEmpty()) {
-            MusicHomeShelves(state.shelves,onClick={ card ->
-                if(card.browseId==null && card.playlistId==null && card.videoId!=null) {
-                    playing=MusicTrack(card.videoId,card.title,card.thumbnail)
-                } else model.homeCard(card)
-            },modifier=Modifier.weight(1f))
-        } else {
-        Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(18.dp)) {
-            LazyColumn(Modifier.width(250.dp).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                items(state.playlists,key={ it.id }) { playlist ->
-                    Button(onClick={ ambient=false;playing=null;model.playlist(playlist) },enabled=!busy,modifier=Modifier.fillMaxWidth()) {
-                        Column {
-                            Text(playlist.title,maxLines=2,overflow=TextOverflow.Ellipsis)
-                            Text("${playlist.count} items",style=MaterialTheme.typography.labelSmall)
-                        }
-                    }
+        }) {
+            MusicBrowser(model,contentFocus,playing!=null,playbackQueue,playbackIndex,queueRequest,
+                onPlay={ tracks,index -> if(tracks.isNotEmpty()) { playerController.reset();playbackQueue=tracks.toList();playbackIndex=index;isPlaying=true } },onBackRoot=onRequestTopBar,navigation=browserNavigation)
+            if(playing!=null && trackPlayer!=null) {
+                Box(Modifier.align(Alignment.TopEnd).padding(top=106.dp,end=36.dp)) {
+                    trackPlayer(Modifier.width(280.dp).height(150.dp),true)
                 }
-            }
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                val track=playing
-                if(track!=null) {
-                    Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                        Text(track.title,modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.titleMedium)
-                        Button(onClick={ ambient=true }) { Text("Photo screensaver") }
-                        Button(onClick={ playing=null }) { Text("Close player") }
-                    }
-                    trackPlayer?.invoke(Modifier.fillMaxWidth().weight(1f),true)
-                } else {
-                    Text(state.playlist?.title ?: "Choose a playlist",style=MaterialTheme.typography.titleLarge)
-                    LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        itemsIndexed(state.tracks,key={ index,item -> "${item.id}:$index" }) { _,item ->
-                            Surface(onClick={ playing=item },modifier=Modifier.fillMaxWidth()) {
-                                Row(Modifier.padding(10.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                                    AsyncImage(item.thumbnail,null,modifier=Modifier.width(120.dp).height(70.dp))
-                                    Text(item.title,maxLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyLarge)
-                                }
-                            }
-                        }
-                    }
-                }
+                MusicPlayerBar(playing,isPlaying,playbackIndex>0,playbackIndex<playbackQueue.lastIndex,playbackQueue.size,
+                    onPrevious={ skip(-1) },onToggle=::togglePlayback,onNext={ skip(1) },onQueue={ queueRequest++ },onPhotos={ ambient=true },
+                    modifier=Modifier.align(Alignment.BottomCenter).padding(horizontal=30.dp,vertical=8.dp))
             }
         }
-        }
-    }
     }
     }
 }
@@ -236,7 +198,7 @@ private fun MusicAmbientPhotos(modifier:Modifier,exit:()->Unit) {
 }
 
 @Composable
-fun MusicSettingsScreen(onDone:()->Unit,model:MusicViewModel=viewModel()) {
+fun MusicSettingsScreen(onDone:()->Unit,model:MusicViewModel=viewModel(),onRequestTopBar:()->Unit={}) {
     val state by model.state.collectAsStateWithLifecycle()
     val busy by model.busy.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()

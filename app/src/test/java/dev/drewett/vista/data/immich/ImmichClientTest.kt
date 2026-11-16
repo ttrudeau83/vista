@@ -103,7 +103,7 @@ class ImmichClientTest {
             server.route("/api/search/metadata") { request ->
                 val filter = JSONObject(request.body)
                 if (request.method == "POST" && filter.getInt("size") == 100 && filter.getInt("page") == 3 &&
-                    filter.getJSONArray("albumIds").getString(0) == albumId && filter.getString("type") == "IMAGE")
+                    filter.getJSONArray("albumIds").getString(0) == albumId && !filter.has("type"))
                     Response(body = """{"assets":{"total":100,"count":100,"nextPage":"4","items":[{"id":"$imageId","type":"IMAGE","localDateTime":"2020-11-15T12:00:00Z"}]}}""")
                 else Response(400)
             }
@@ -153,6 +153,29 @@ class ImmichClientTest {
             val error = failure { ImmichClient("${server.origin}/api", "test-only-key").thumbnail(imageId, ByteArrayOutputStream()) }
             assertTrue(error is ImmichException)
             assertTrue(error.message.orEmpty().contains("too large"))
+        }
+    }
+
+    @Test fun videosUsePlaybackEndpointAndKeepAuthenticationOutOfTheUrl() = runBlocking {
+        withServer { server ->
+            server.route("/api/assets/$imageId/video/playback") { request ->
+                assertEquals("video/*",request.headers["accept"])
+                assertEquals("bytes=0-",request.headers["range"])
+                assertFalse(request.target.contains("test-only-key"))
+                Response(body="video-content",headers=mapOf("Content-Type" to "video/mp4"))
+            }
+            val output=ByteArrayOutputStream()
+            ImmichClient("${server.origin}/api","test-only-key").video(imageId,output)
+            assertEquals("video-content",output.toString("UTF-8"))
+        }
+    }
+
+    @Test fun videosLargerThanThePerClipBudgetAreRejectedBeforeDownloading() = runBlocking {
+        withServer { server ->
+            server.route("/api/assets/$imageId/video/playback") {
+                Response(declaredLength=129L*1024*1024,headers=mapOf("Content-Type" to "video/mp4"))
+            }
+            assertTrue(failure { ImmichClient("${server.origin}/api","test-only-key").video(imageId,ByteArrayOutputStream()) } is ImmichException)
         }
     }
 

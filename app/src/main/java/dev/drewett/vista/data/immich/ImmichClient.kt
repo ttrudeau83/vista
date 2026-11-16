@@ -104,6 +104,7 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
                 connection.useCaches = false
                 connection.setRequestProperty("x-api-key", apiKey)
                 connection.setRequestProperty("Accept", if (image) "image/*" else if(video) "video/*" else "application/json")
+                if(video) connection.setRequestProperty("Range","bytes=0-")
                 if (body != null) {
                     connection.requestMethod = "POST"
                     connection.doOutput = true

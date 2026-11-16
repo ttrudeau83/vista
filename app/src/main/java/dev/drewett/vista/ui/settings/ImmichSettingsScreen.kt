@@ -120,7 +120,7 @@ fun ImmichSettingsScreen(onDone: () -> Unit, model: ImmichSettingsViewModel = vi
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Button(onClick = model::loadAlbums, enabled = !state.busy) { Text("Refresh albums") }
-                    Button(onClick = model::toggleFit, enabled = !state.busy) { Text(if (config.fit) "Mode: Fit" else "Mode: Crop") }
+                    Button(onClick = model::toggleFit, enabled = !state.busy) { Text(if (config.fit) "Home background: Fit" else "Home background: Crop") }
                     Button(onClick = model::refreshPhoto, enabled = !state.busy && config.albumId != null) { Text("Refresh photo") }
                 }
             }

@@ -26,13 +26,13 @@ class PhotoCatalogTest {
     private val first = "11111111-1111-4111-8111-111111111111"
     private val second = "22222222-2222-4222-8222-222222222222"
 
-    @Test fun catalogUsesPhotographerLocalDateAndSkipsVideosAndTrash() {
+    @Test fun catalogUsesPhotographerLocalDateAndIncludesVideosButSkipsTrash() {
         val page = ImmichProtocol.photoPage("""{"assets":{"total":140,"items":[
             {"id":"$first","type":"IMAGE","localDateTime":"2020-11-15T23:30:00Z","fileCreatedAt":"2020-11-16T06:30:00Z"},
             {"id":"$second","type":"VIDEO"}, {"id":"invalid","type":"IMAGE"},
             {"id":"$second","type":"IMAGE","isTrashed":true}]}}""")
         assertEquals(140, page.total)
-        assertEquals(listOf(PhotoAsset(first, "2020-11-15")), page.assets)
+        assertEquals(listOf(PhotoAsset(first, "2020-11-15"),PhotoAsset(second,kind=MediaKind.VIDEO)), page.assets)
     }
 
     @Test fun continuationIsAuthoritativeWhenTotalIsOnlyTheCurrentPageCount() {

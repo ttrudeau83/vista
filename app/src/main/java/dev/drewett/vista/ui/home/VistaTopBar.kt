@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,9 +50,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class VistaTab(val label: String) {
-    FOR_YOU("For you"), MOVIES("Movies"), SHOWS("Shows"), SMARTTUBE("SmartTube"),
-    MUSIC("Music"), PHOTOS("Photos"), FREEPLAY("Freeplay"), APPS("Apps"),
+enum class VistaTab(val label: String,val icon:Int) {
+    FOR_YOU("For you",R.drawable.ic_nav_home), MOVIES("Movies",R.drawable.ic_nav_movies), SHOWS("Shows",R.drawable.ic_nav_shows), SMARTTUBE("SmartTube",R.drawable.ic_nav_tube),
+    MUSIC("Music",R.drawable.ic_nav_music), PHOTOS("Photos",R.drawable.ic_nav_photos), FREEPLAY("Freeplay",R.drawable.ic_nav_live), APPS("Apps",R.drawable.ic_nav_apps),
 }
 
 @Composable
@@ -119,7 +120,8 @@ fun VistaTopBar(
                             pressedContentColor = colors.background,
                         ),
                     ) {
-                        Box(Modifier.fillMaxHeight().padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+                        Row(Modifier.fillMaxHeight().padding(horizontal = 8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(5.dp)) {
+                            Image(painterResource(tab.icon),null,Modifier.size(16.dp),colorFilter=ColorFilter.tint(androidx.tv.material3.LocalContentColor.current))
                             Text(tab.label, style = MaterialTheme.typography.titleSmall,
                                 fontWeight = if (selected == tab) FontWeight.SemiBold else FontWeight.Medium)
                         }

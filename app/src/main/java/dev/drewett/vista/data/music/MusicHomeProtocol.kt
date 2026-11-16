@@ -5,8 +5,11 @@ import org.json.JSONObject
 
 /** Tolerates optional/unknown web renderers; never interprets arbitrary URLs as playback. */
 object MusicHomeProtocol {
+    fun cards(json:JSONObject):List<MusicHomeCard> = nodes(json).mapNotNull(::card)
+        .distinctBy { listOf(it.browseId,it.playlistId,it.videoId) }.take(100).toList()
     /** A VL browse ID wraps a playlist; mixes must enter the playback queue, not artist browsing. */
     fun destination(card:MusicHomeCard):Pair<String,JSONObject> {
+        if(card.browseId?.startsWith("UC")==true) return "browse" to JSONObject().put("browseId",card.browseId)
         val playlist=card.playlistId ?: card.browseId?.takeIf { it.startsWith("VL") }?.removePrefix("VL")?.takeIf(MusicProtocol::resourceId)
         if(playlist!=null || card.videoId!=null) {
             val body=JSONObject().put("enablePersistentPlaylistPanel",true).put("isAudioOnly",true).put("tunerSettingValue","AUTOMIX_SETTING_NORMAL")

@@ -153,7 +153,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 contentFocus = contentFocus,
             )
             VistaTab.PHOTOS -> PhotosScreen(photo = photo, contentFocus = contentFocus)
-            VistaTab.MUSIC -> MusicScreen(contentFocus = contentFocus, onAmbientChanged = { musicAmbient = it })
+            VistaTab.MUSIC -> MusicScreen(contentFocus = contentFocus, onAmbientChanged = { musicAmbient = it },onRequestTopBar={ runCatching { topBarFocus.requestFocus() } })
             VistaTab.FREEPLAY -> Box(Modifier.fillMaxSize().padding(horizontal = 64.dp), contentAlignment = Alignment.CenterStart) {
                 Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Text("Google TV Freeplay", style = MaterialTheme.typography.headlineLarge)

@@ -7,6 +7,7 @@ import dev.drewett.vista.data.music.MusicChannel
 import dev.drewett.vista.data.music.MusicHomeCard
 import dev.drewett.vista.data.music.MusicPlaylist
 import dev.drewett.vista.data.music.MusicRepository
+import dev.drewett.vista.data.music.MusicState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,8 +24,8 @@ class MusicViewModel(app:Application):AndroidViewModel(app) {
     fun connect()=action { repository.startSignIn() }
     fun refresh()=action { repository.refreshLibrary() }
     fun channel(channel:MusicChannel)=action { repository.selectChannel(channel) }
-    fun playlist(playlist:MusicPlaylist)=action { repository.selectPlaylist(playlist) }
-    fun homeCard(card:MusicHomeCard)=action { repository.selectHomeCard(card) }
+    fun playlist(playlist:MusicPlaylist,ready:(MusicState)->Unit={})=action { repository.selectPlaylist(playlist);ready(repository.state.value) }
+    fun homeCard(card:MusicHomeCard,ready:(MusicState)->Unit={})=action { repository.selectHomeCard(card);ready(repository.state.value) }
     fun disconnect()=action { repository.disconnect() }
     fun disconnectBrowser()=action { repository.disconnectBrowserSession() }
     private fun action(block:suspend ()->Unit) {

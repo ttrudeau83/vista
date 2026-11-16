@@ -91,6 +91,14 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
             frameVideo(); animatePhoto()
         } }
         scope.launch { settings.photoMotion.collectLatest { motion = it; animatePhoto() } }
+        scope.launch {
+            repository.currentAmbient.collectLatest { asset ->
+                val file=asset?.cachedFile
+                if(asset!=null && !asset.isVideo && asset.id==currentMedia?.id && file!=null && file!=currentMedia?.file) {
+                    display(AmbientMedia(asset.id,file,MediaKind.PHOTO),onlyIfCurrent=true)
+                }
+            }
+        }
         scope.launch { settings.ambientVideos.collectLatest { includeVideos = it; if(!it && currentMedia?.kind == MediaKind.VIDEO) nextMedia() } }
         scope.launch {
             repository.config.collectLatest {
@@ -145,13 +153,14 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
         }
     }
     fun stop() {
+        val releasedId=currentMedia?.id
         keepScreenOn = false
         handler.removeCallbacksAndMessages(null); work?.cancel(); work = null
         releaseVideo()
         image.animate().cancel(); image.setImageDrawable(null); currentMedia = null
         popup?.let(::removeView); popup = null
         while(advanceSignal.tryReceive().isSuccess) { }
-        repository.endAmbientSession()
+        repository.endAmbientSession(releasedId)
     }
     fun nextMedia() { advanceSignal.trySend(Unit) }
     fun showOptions() { showPhotoMenu() }
@@ -199,7 +208,7 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
         popup?.let(::removeView); popup = null
         if(currentMedia?.kind == MediaKind.VIDEO) runCatching { player?.setVolume(0f,0f);player?.start() } else animatePhoto()
     }
-    private suspend fun display(media: AmbientMedia): Boolean {
+    private suspend fun display(media: AmbientMedia,onlyIfCurrent:Boolean=false): Boolean {
         if(media.kind == MediaKind.VIDEO) return displayVideo(media)
         val bitmap = withContext(Dispatchers.IO) {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -210,6 +219,7 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
                 (bounds.outWidth/(sample*2) >= 3840 && bounds.outHeight/(sample*2) >= 2160)) sample *= 2
             BitmapFactory.decodeFile(media.file.absolutePath,BitmapFactory.Options().apply { inSampleSize = sample; inPreferredConfig = Bitmap.Config.ARGB_8888 })
         } ?: return false
+        if(onlyIfCurrent && currentMedia?.id!=media.id) return false
         releaseVideo()
         image.visibility = View.VISIBLE
         image.animate().cancel(); image.setImageBitmap(bitmap); currentMedia = media; animatePhoto()

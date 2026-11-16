@@ -93,6 +93,8 @@ data class CachedPhotoEntry(val key: String, val bytes: Long, val lastUsed: Long
 
 /** Shared deterministic LRU policy; protected current/downloaded photos are never evicted. */
 object PhotoCachePolicy {
+    /** Leave headroom for a clip; still fetch a replacement when all cached media were shown. */
+    fun canWarm(bytes:Long,hasReadyUnseen:Boolean):Boolean = bytes < 384L*1024*1024 || !hasReadyUnseen
     fun evictionKeys(entries: List<CachedPhotoEntry>, protected: Set<String>, maxBytes: Long = 512L * 1024 * 1024,
         maxFiles: Int = 120): Set<String> {
         val remaining = entries.distinctBy { it.key }.sortedBy { it.lastUsed }.toMutableList()

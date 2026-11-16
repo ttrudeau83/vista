@@ -42,6 +42,7 @@ class ImmichRepository private constructor(context: Context) {
     private var hidden = emptySet<String>()
     private var currentId: String? = null
     private var ambientId: String? = null
+    private var manualAmbientId: String? = null
     private var shown = emptySet<String>()
     private val retryAfter = mutableMapOf<String, Long>()
     private var catalogComplete = false
@@ -171,7 +172,10 @@ class ImmichRepository private constructor(context: Context) {
             if (!isCurrentLocked(snapshot)) return@withLock null
             val eligible = ambientEligibleLocked(includeVideos)
             val current = eligible.firstOrNull { it.id == ambientId && it.cachedFile?.isFile == true }
-            if (!advance && current != null) return@withLock current.ambient()
+            if (!advance && current != null && (current.id !in shown || current.id==manualAmbientId)) {
+                manualAmbientId=null
+                return@withLock current.ambient()
+            }
             if (AmbientRotationPolicy.cycleComplete(eligible, shown, catalogComplete)) {
                 shown = shown - eligible.map { it.id }.toSet()
                 retryAfter.clear()
@@ -203,7 +207,7 @@ class ImmichRepository private constructor(context: Context) {
         val result = mutex.withLock {
             if (!isCurrentLocked(snapshot)) return@withLock null
             withFilesLocked().firstOrNull { it.id == id && !it.hidden }?.let {
-                ambientId = id; publishLocked(); it.ambient()
+                ambientId = id; manualAmbientId=id; publishLocked(); it.ambient()
             }
         }
         requestPrefetch()
@@ -236,7 +240,11 @@ class ImmichRepository private constructor(context: Context) {
         }
         requestPrefetch()
     }
-    fun endAmbientSession() { scope.launch { mutex.withLock { ambientId = null; publishLocked() } } }
+    fun endAmbientSession(previous:String?) {
+        scope.launch { mutex.withLock {
+            if(ambientId==previous && manualAmbientId!=ambientId) { ambientId=null;publishLocked() }
+        } }
+    }
     private fun PhotoAsset.ambient(): AmbientMedia? = cachedFile?.let { AmbientMedia(id, it, kind) }
 
     private suspend fun choosePhoto(advance: Boolean): File? = safe {
@@ -540,11 +548,15 @@ class ImmichRepository private constructor(context: Context) {
                 val targets = mutex.withLock {
                     if (!isCurrentLocked(snapshot)) return
                     val daily = rollingWindowLocked()
-                    val current = withFilesLocked().firstOrNull { it.id == currentId }
+                    val assets=withFilesLocked()
+                    val current = assets.firstOrNull { it.id==ambientId && !it.isVideo } ?: assets.firstOrNull { it.id == currentId }
+                    val used=File(root,snapshot.namespace).listFiles().orEmpty().filter { it.name.startsWith("asset-") || it.name.startsWith("bootstrap-") }.sumOf { it.length() }
+                    val mayWarm=PhotoCachePolicy.canWarm(used,ambientEligibleLocked().any { it.id !in shown && it.cachedFile?.isFile==true })
                     val photos = PhotoPolicy.prefetchCandidates((daily.filter { !it.isVideo } + listOfNotNull(current?.takeIf { !it.isVideo })).distinctBy { it.id }, hidden,
-                        saved?.slideshowMode ?: SlideshowMode.RANDOM, currentId)
-                    val videos = daily.filter { it.isVideo && it.cachedFile == null }.take(1)
-                    (videos + photos.take(if(videos.isEmpty()) 3 else 2)).map { it.id }
+                        saved?.slideshowMode ?: SlideshowMode.RANDOM, current?.id)
+                    val videos = if(mayWarm) daily.filter { it.isVideo && it.cachedFile == null }.take(1) else emptyList()
+                    val photoTargets=if(mayWarm) photos else photos.filter { it.id==current?.id }
+                    (videos + photoTargets.take(if(videos.isEmpty()) 3 else 2)).map { it.id }
                 }
                 if (targets.isEmpty()) return
                 val successes = coroutineScope {
@@ -598,14 +610,8 @@ class ImmichRepository private constructor(context: Context) {
                         throw ImmichException("This photo took too long to download. Cached photos remain available.")
                     }
                     currentCoroutineContext().ensureActive()
-                    if(isVideo) {
-                        val metadata = MediaMetadataRetriever()
-                        try {
-                            metadata.setDataSource(staging.absolutePath)
-                            if((metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0) <= 0)
-                                throw ImmichException("This video format cannot be displayed on this device.")
-                        } finally { metadata.release() }
-                    } else {
+                    // Decode clips asynchronously in the renderer, not inside the cache download lease.
+                    if(!isVideo) {
                         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         BitmapFactory.decodeFile(staging.absolutePath, bounds)
                         if (bounds.outWidth !in 1..100_000 || bounds.outHeight !in 1..100_000)
@@ -684,7 +690,7 @@ class ImmichRepository private constructor(context: Context) {
         catch (error: Exception) { file.failWrite(stream); throw error }
     }
     private fun readIndexLocked() {
-        catalog = emptyList(); hidden = emptySet(); shown = emptySet(); currentId = null; ambientId = null; catalogComplete = false; catalogLimitReached = false
+        catalog = emptyList(); hidden = emptySet(); shown = emptySet(); currentId = null; ambientId = null; manualAmbientId = null; catalogComplete = false; catalogLimitReached = false
         val index = indexLocked() ?: return
         try {
             if (!index.baseFile.exists() || index.baseFile.length() > 8 * 1024 * 1024) return
@@ -708,7 +714,7 @@ class ImmichRepository private constructor(context: Context) {
     }
     private fun resetLocked() {
         generation += 1; prefetchJob?.cancel(); catalogJob?.cancel(); bootstrapJob?.cancel(); previewWarmJob?.cancel(); downloads.clear()
-        catalog = emptyList(); hidden = emptySet(); shown = emptySet(); currentId = null; ambientId = null; catalogComplete = false; catalogLimitReached = false; retryAfter.clear()
+        catalog = emptyList(); hidden = emptySet(); shown = emptySet(); currentId = null; ambientId = null; manualAmbientId = null; catalogComplete = false; catalogLimitReached = false; retryAfter.clear()
         if (root.exists()) root.walkTopDown().filter { it.isFile }.forEach(::deleteFileLocked)
         root.deleteRecursively(); lastPrefetchFailure = 0
         _loading.value = false; _status.value = null; publishLocked(); _photoRevision.value += 1

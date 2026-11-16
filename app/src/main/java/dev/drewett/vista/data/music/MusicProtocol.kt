@@ -18,6 +18,7 @@ data class MusicState(
     val playlist: MusicPlaylist? = null,
     val tracks: List<MusicTrack> = emptyList(),
     val shelves: List<MusicShelf> = emptyList(),
+    val artists: List<MusicHomeCard> = emptyList(),
     val homeMessage: String? = null,
     val browserConnected:Boolean = false,
     val browserProfile:String? = null,
@@ -26,6 +27,12 @@ data class MusicState(
 )
 
 object MusicProtocol {
+    fun subscriptions(json:JSONObject):List<MusicHomeCard> = items(json).mapNotNull { item ->
+        val snippet=item.optJSONObject("snippet") ?: return@mapNotNull null
+        val id=snippet.optJSONObject("resourceId")?.optString("channelId").orEmpty()
+        val title=snippet.optString("title")
+        if(id.startsWith("UC") && resourceId(id) && title.isNotBlank()) MusicHomeCard(title.take(200),thumbnail(snippet),browseId=id) else null
+    }.distinctBy { it.browseId }
     fun videoId(value: String): Boolean = value.matches(Regex("[A-Za-z0-9_-]{11}"))
     fun resourceId(value: String): Boolean = value.matches(Regex("[A-Za-z0-9_-]{1,128}"))
     fun channels(json: JSONObject): List<MusicChannel> = items(json).mapNotNull { item ->

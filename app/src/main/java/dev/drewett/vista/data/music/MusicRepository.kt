@@ -34,6 +34,11 @@ class MusicRepository private constructor(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var credentials: MusicCredentials? = null
     private var polling: Job? = null
+    private val knownHomeCards=linkedSetOf<MusicHomeCard>()
+    private fun rememberHomeCards(cards:List<MusicHomeCard>) {
+        knownHomeCards.addAll(cards)
+        while(knownHomeCards.size>2048) knownHomeCards.remove(knownHomeCards.first())
+    }
     private val _state = MutableStateFlow(MusicState())
     val state = _state.asStateFlow()
 
@@ -196,7 +201,22 @@ class MusicRepository private constructor(context: Context) {
                 } catch(cancelled:CancellationException) { throw cancelled }
                 catch(_:Exception) { break }
             }
-            _state.value=_state.value.copy(shelves=shelves.distinctBy { it.title },homeMessage=if(shelves.isEmpty()) "Music home is unavailable. Your playlists are still available." else null)
+            var artists=shelves.flatMap { it.cards }.filter { it.browseId?.startsWith("UC")==true }.distinctBy { it.browseId }
+            if(value.browserSession!=null) {
+                try {
+                    val response=musicApi(value,"browse",JSONObject().put("browseId","FEmusic_library_corpus_artists"))
+                    artists=(MusicHomeProtocol.cards(response).filter { it.browseId?.startsWith("UC")==true }+artists).distinctBy { it.browseId }.take(40)
+                    if(artists.isEmpty()) {
+                        val libraryArtists=musicApi(value,"browse",JSONObject().put("browseId","FEmusic_library_corpus_track_artists"))
+                        artists=MusicHomeProtocol.cards(libraryArtists).filter { it.browseId?.startsWith("UC")==true }.distinctBy { it.browseId }.take(40)
+                    }
+                } catch(cancelled:CancellationException) { throw cancelled } catch(_:Exception) { }
+            }
+            if(artists.isEmpty()) try {
+                artists=MusicProtocol.subscriptions(api(value,"subscriptions?part=snippet&mine=true&maxResults=50"))
+            } catch(cancelled:CancellationException) { throw cancelled } catch(_:Exception) { }
+            rememberHomeCards(shelves.flatMap { it.cards }+artists)
+            _state.value=_state.value.copy(shelves=shelves.distinctBy { it.title },artists=artists,homeMessage=if(shelves.isEmpty()) "Music home is unavailable. Your playlists are still available." else null)
         } catch(cancelled:CancellationException) { throw cancelled }
         catch(error:MusicHomeException) { _state.value=_state.value.copy(homeMessage=error.message+" Your playlists are still available.") }
         catch(_:Exception) { _state.value=_state.value.copy(homeMessage="Music home could not refresh. Your playlists are still available.") }
@@ -204,11 +224,20 @@ class MusicRepository private constructor(context: Context) {
 
     suspend fun selectHomeCard(card:MusicHomeCard) = io {
         val value=requireAuthorized()
-        require(state.value.shelves.any { card in it.cards })
+        require(state.value.shelves.any { card in it.cards } || card in state.value.artists || card in knownHomeCards)
         val (endpoint,body)=MusicHomeProtocol.destination(card)
-        val response=musicApi(value,endpoint,body)
-        val tracks=MusicHomeProtocol.tracks(response)
+        val response=try { musicApi(value,endpoint,body) } catch(error:MusicHomeException) {
+            if(card.browseId?.startsWith("UC")==true) JSONObject() else throw error
+        }
+        var tracks=MusicHomeProtocol.tracks(response)
         val nested=MusicHomeProtocol.shelves(response)
+        if(tracks.isEmpty() && nested.isEmpty() && card.browseId?.startsWith("UC")==true) {
+            val channel=api(value,"channels?part=contentDetails&id=${encode(card.browseId)}")
+                .optJSONArray("items")?.optJSONObject(0)
+            val uploads=channel?.optJSONObject("contentDetails")?.optJSONObject("relatedPlaylists")?.optString("uploads").orEmpty()
+            if(MusicProtocol.resourceId(uploads)) tracks=MusicProtocol.tracks(api(value,"playlistItems?part=snippet&playlistId=${encode(uploads)}&maxResults=50"))
+        }
+        rememberHomeCards(nested.flatMap { it.cards })
         _state.value=_state.value.copy(playlist=MusicPlaylist(card.playlistId ?: card.browseId ?: card.videoId.orEmpty(),card.title,card.thumbnail,tracks.size),
             tracks=tracks,shelves=if(tracks.isEmpty() && nested.isNotEmpty()) nested else state.value.shelves,
             message=if(tracks.isEmpty() && nested.isEmpty()) "This Music category is not available in the custom player yet." else null)

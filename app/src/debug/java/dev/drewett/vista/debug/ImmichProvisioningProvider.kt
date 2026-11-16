@@ -52,7 +52,7 @@ class ImmichProvisioningProvider : ContentProvider() {
                 "musicStatus" -> {
                     val music = dev.drewett.vista.data.music.MusicRepository.get(requireNotNull(context))
                     if(arg=="refresh") music.refreshLibrary()
-                    Bundle().apply { putBoolean("authorized", music.state.value.authorized); putString("channel", music.state.value.channel?.title); putInt("playlists", music.state.value.playlists.size); putInt("homeShelves", music.state.value.shelves.size); putInt("homeCards",music.state.value.shelves.sumOf { it.cards.size }); putString("homeMessage",music.state.value.homeMessage); putString("message", music.state.value.message); putString("code", music.state.value.pairing?.userCode) }
+                    Bundle().apply { putBoolean("authorized", music.state.value.authorized); putString("channel", music.state.value.channel?.title); putInt("playlists", music.state.value.playlists.size); putInt("artists",music.state.value.artists.size); putInt("homeShelves", music.state.value.shelves.size); putInt("homeCards",music.state.value.shelves.sumOf { it.cards.size }); putString("homeMessage",music.state.value.homeMessage); putString("message", music.state.value.message); putString("code", music.state.value.pairing?.userCode) }
                 }
                 "musicBrowser" -> {
                     val appContext=requireNotNull(context)
@@ -87,12 +87,14 @@ class ImmichProvisioningProvider : ContentProvider() {
                     Bundle().apply {
                         putInt("photos",repository.gallery.value.count { !it.isVideo })
                         putInt("videos",repository.gallery.value.count { it.isVideo })
+                        putInt("cachedVideos",repository.gallery.value.count { it.isVideo && it.cachedFile?.isFile==true })
                         putInt("cached",repository.gallery.value.count { it.cachedFile?.isFile==true })
                     }
                 }
                 "ambientVerifyVideo" -> {
                     repository.loadGallery()
-                    val asset=repository.gallery.value.firstOrNull { it.isVideo }
+                    val videos=repository.gallery.value.filter { it.isVideo }.sortedByDescending { it.cachedFile?.isFile==true }
+                    val asset=videos.getOrNull(arg?.toIntOrNull() ?: 0)
                     val result=Bundle().apply { putBoolean("videoFound",asset!=null) }
                     if(asset!=null) {
                         try {
@@ -101,12 +103,56 @@ class ImmichProvisioningProvider : ContentProvider() {
                             try {
                                 player.setVolume(0f,0f)
                                 player.setDataSource(media.file.absolutePath)
-                                player.prepare() // Validate only; never start playback or request audio focus.
-                                result.putBoolean("prepared",true)
-                                result.putInt("width",player.videoWidth);result.putInt("height",player.videoHeight)
-                                result.putInt("durationMs",player.duration)
+                                val prepared=kotlinx.coroutines.withTimeoutOrNull(15_000) {
+                                    kotlinx.coroutines.suspendCancellableCoroutine<Boolean> { pending ->
+                                        player.setOnPreparedListener { if(pending.isActive) pending.resumeWith(Result.success(true)) }
+                                        player.setOnErrorListener { _,_,_ -> if(pending.isActive) pending.resumeWith(Result.success(false));true }
+                                        player.prepareAsync() // Validate only; never start or request audio focus.
+                                    }
+                                }==true
+                                result.putBoolean("prepared",prepared)
+                                if(prepared) {
+                                    result.putInt("width",player.videoWidth);result.putInt("height",player.videoHeight)
+                                    result.putInt("durationMs",player.duration)
+                                }
                             } finally { player.release() }
-                        } catch(error:Exception) { result.putBoolean("prepared",false);result.putString("failure",error.javaClass.simpleName) }
+                        } catch(error:Exception) { result.putBoolean("prepared",false);result.putString("failure",if(error is dev.drewett.vista.data.immich.ImmichException) error.message else error.javaClass.simpleName) }
+                    }
+                    result
+                }
+                "ambientVideoHeaders" -> {
+                    repository.loadGallery()
+                    val getSample=arg?.startsWith("get:")==true
+                    val asset=repository.gallery.value.filter { it.isVideo }.getOrNull(arg?.substringAfter(':')?.toIntOrNull() ?: 0)
+                    val saved=dev.drewett.vista.data.immich.ImmichVault(requireNotNull(context)).read()
+                    val result=Bundle().apply { putBoolean("videoFound",asset!=null) }
+                    if(asset!=null && saved!=null) {
+                        val origin=java.net.URI(saved.server)
+                        var target=java.net.URI("${saved.server}/assets/${asset.id}/video/playback")
+                        try {
+                            for(attempt in 0 until 5) {
+                                require(dev.drewett.vista.data.immich.ImmichProtocol.sameOrigin(origin,target))
+                                val connection=target.toURL().openConnection() as java.net.HttpURLConnection
+                                try {
+                                    connection.requestMethod=if(getSample) "GET" else "HEAD";connection.instanceFollowRedirects=false
+                                    connection.connectTimeout=8_000;connection.readTimeout=10_000
+                                    connection.setRequestProperty("x-api-key",saved.key)
+                                    if(getSample) connection.setRequestProperty("Range","bytes=0-1023")
+                                    val status=connection.responseCode
+                                    if(status in listOf(301,302,303,307,308)) {
+                                        target=target.resolve(requireNotNull(connection.getHeaderField("Location")));continue
+                                    }
+                                    result.putInt("status",status);result.putLong("bytes",connection.contentLengthLong)
+                                    result.putString("type",connection.contentType)
+                                    if(getSample && status in 200..299) {
+                                        val buffer=ByteArray(1024)
+                                        try { connection.inputStream.use { result.putInt("sampleBytes",it.read(buffer)) } }
+                                        finally { buffer.fill(0) }
+                                    }
+                                    break
+                                } finally { connection.disconnect() }
+                            }
+                        } catch(error:Exception) { result.putString("failure",error.javaClass.simpleName) }
                     }
                     result
                 }
