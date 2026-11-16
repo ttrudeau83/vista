@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.*
+import dev.drewett.vista.ui.components.VistaButton as Button
 import coil.compose.AsyncImage
 import dev.drewett.vista.data.immich.ImmichRepository
 import dev.drewett.vista.data.immich.PhotoAsset

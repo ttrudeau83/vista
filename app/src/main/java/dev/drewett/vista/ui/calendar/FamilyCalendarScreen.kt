@@ -41,7 +41,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.tv.material3.Button
+import dev.drewett.vista.ui.components.VistaButton as Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Surface

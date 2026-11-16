@@ -73,6 +73,7 @@
             android:theme="@style/Theme.Vista" />
 
         <activity android:name=".MusicSettingsActivity" android:exported="false" android:theme="@style/Theme.Vista" />
+        <activity android:name=".AppearanceSettingsActivity" android:exported="false" android:theme="@style/Theme.Vista" />
         <activity android:name=".PhotoGalleryActivity" android:exported="false" android:theme="@style/Theme.Vista" />
         <activity android:name=".PhotoSlideshowActivity" android:exported="false" android:theme="@style/Theme.Vista" />
 

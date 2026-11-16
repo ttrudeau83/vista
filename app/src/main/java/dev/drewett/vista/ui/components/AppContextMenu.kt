@@ -103,7 +103,7 @@ fun AppContextMenu(
 private fun MenuItem(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth().focusOutline(ItemShape),
         shape = ClickableSurfaceDefaults.shape(ItemShape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,

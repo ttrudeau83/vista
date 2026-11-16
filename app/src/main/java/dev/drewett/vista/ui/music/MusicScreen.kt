@@ -64,7 +64,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.tv.material3.Button
+import dev.drewett.vista.ui.components.VistaButton as Button
 import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
@@ -174,13 +174,14 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
             }
         }) {
             MusicBrowser(model,contentFocus,playing!=null,playbackQueue,playbackIndex,queueRequest,
+                onPhotos={ if(playing!=null) ambient=true else context.startActivity(android.content.Intent(context,dev.drewett.vista.PhotoSlideshowActivity::class.java)) },
                 onPlay={ tracks,index -> if(tracks.isNotEmpty()) { playerController.reset();playbackQueue=tracks.toList();playbackIndex=index;isPlaying=true } },onBackRoot=onRequestTopBar,navigation=browserNavigation)
             if(playing!=null && trackPlayer!=null) {
                 Box(Modifier.align(Alignment.TopEnd).padding(top=28.dp,end=36.dp)) {
                     trackPlayer(Modifier.width(280.dp).height(150.dp),true)
                 }
                 MusicPlayerBar(playing,isPlaying,playbackIndex>0,playbackIndex<playbackQueue.lastIndex,playbackQueue.size,
-                    onPrevious={ skip(-1) },onToggle=::togglePlayback,onNext={ skip(1) },onQueue={ queueRequest++ },onPhotos={ ambient=true },
+                    onPrevious={ skip(-1) },onToggle=::togglePlayback,onNext={ skip(1) },onQueue={ queueRequest++ },
                     modifier=Modifier.align(Alignment.BottomCenter).padding(horizontal=30.dp,vertical=8.dp))
             }
         }

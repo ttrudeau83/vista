@@ -43,7 +43,7 @@ fun AppCard(
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.panelFocus().focusPop(enabled = !flatFocus).appActivationKeys(onClick, onLongClick).aspectRatio(16f / 9f),
+        modifier = modifier.panelFocus().focusPop(enabled = !flatFocus, shape = CardShape).appActivationKeys(onClick, onLongClick).aspectRatio(16f / 9f),
         shape = ClickableSurfaceDefaults.shape(CardShape),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         colors = ClickableSurfaceDefaults.colors(

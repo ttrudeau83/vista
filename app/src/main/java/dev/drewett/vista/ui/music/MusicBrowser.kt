@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.*
+import dev.drewett.vista.ui.components.VistaButton as Button
 import coil.compose.AsyncImage
 import dev.drewett.vista.MusicSettingsActivity
 import dev.drewett.vista.ui.home.railBoundary
@@ -49,7 +50,7 @@ internal class MusicBrowserState {
 /** Browsing has its own history; opening another playlist never replaces the playing queue. */
 @Composable
 internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPlayer:Boolean,
-    queue:List<MusicTrack>,queueIndex:Int,queueRequest:Int,onPlay:(List<MusicTrack>,Int)->Unit,onBackRoot:()->Unit,navigation:MusicBrowserState) {
+    queue:List<MusicTrack>,queueIndex:Int,queueRequest:Int,onPlay:(List<MusicTrack>,Int)->Unit,onPhotos:()->Unit,onBackRoot:()->Unit,navigation:MusicBrowserState) {
     val state by model.state.collectAsState()
     val busy by model.busy.collectAsState()
     val message by model.message.collectAsState()
@@ -123,10 +124,10 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                 Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     MusicIcon(R.drawable.ic_nav_music,"",22)
                     Text("YouTube Music",style=MaterialTheme.typography.titleMedium)
-                    Text(state.browserProfile ?: state.channel?.title.orEmpty(),color=Color(0xFFABBDD9),style=MaterialTheme.typography.labelSmall,maxLines=1)
+                    Text(state.browserProfile ?: state.channel?.title.orEmpty(),color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f),style=MaterialTheme.typography.labelSmall,maxLines=1)
                 }
                 Text(if(detail) location.title else location.title.ifBlank { "Your music. Your way." },style=MaterialTheme.typography.headlineMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
-                Text(if(detail) "${detailTracks.size} tracks · Select a track to play" else "Your mixes, playlists and channels, all in one place.",color=Color(0xFFB9C7DD),style=MaterialTheme.typography.bodyMedium)
+                Text(if(detail) "${detailTracks.size} tracks · Select a track to play" else "Your mixes, playlists and channels, all in one place.",color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f),style=MaterialTheme.typography.bodyMedium)
                 Row(Modifier.focusRequester(heroFocus).focusGroup().then(sectionKeys(0 to playlistFocus,null)).onFocusChanged { if(it.hasFocus) focusSection=0 },horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     Button(onClick={
                         if(detail && detailTracks.isNotEmpty()) onPlay(detailTracks,0)
@@ -135,6 +136,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                         MusicIcon(R.drawable.ic_media_play,"",18);Spacer(Modifier.width(6.dp));Text(if(detail) "Play all" else "Play my mix")
                     }
                     Button(onClick={ navigate(MusicLocation(MusicPage.LIBRARY,"Your library")) }) { MusicIcon(R.drawable.ic_nav_apps,"",18);Spacer(Modifier.width(6.dp));Text("Browse library") }
+                    Button(onClick=onPhotos) { MusicIcon(R.drawable.ic_nav_photos,"",18);Spacer(Modifier.width(6.dp));Text("Photos") }
                     if(!hasPlayer) Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { MusicIcon(R.drawable.ic_settings,"Music settings",18) }
                 }
             }
@@ -152,8 +154,8 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
         LazyColumn(state=rows,modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(18.dp),contentPadding=PaddingValues(6.dp)) {
             if(detail) {
                 itemsIndexed(detailTracks,key={ index,track -> "${track.id}:$index" }) { index,track ->
-                    Surface(onClick={ onPlay(detailTracks,index) },modifier=Modifier.fillMaxWidth().railBoundary().then(if(index==0) Modifier.focusRequester(playlistFocus).railBoundary().then(sectionKeys(null,-1 to heroFocus)) else Modifier).onFocusChanged { if(it.hasFocus) focusSection=1 },
-                        colors=ClickableSurfaceDefaults.colors(containerColor=if(queue.getOrNull(queueIndex)?.id==track.id) Color(0xFF253C60) else Color(0x66172439),focusedContainerColor=Color(0xFFCDDFFF),focusedContentColor=Color(0xFF0B1729))) {
+                    Surface(onClick={ onPlay(detailTracks,index) },modifier=Modifier.fillMaxWidth().railBoundary().focusPop().then(if(index==0) Modifier.focusRequester(playlistFocus).railBoundary().then(sectionKeys(null,-1 to heroFocus)) else Modifier).onFocusChanged { if(it.hasFocus) focusSection=1 },scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
+                        colors=ClickableSurfaceDefaults.colors(containerColor=if(queue.getOrNull(queueIndex)?.id==track.id) Color(0xFF253C60) else Color(0xEE172439),contentColor=Color.White,focusedContainerColor=Color(0xFFCDDFFF),focusedContentColor=Color(0xFF0B1729))) {
                         Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
                             Text("${index+1}",style=MaterialTheme.typography.labelLarge,modifier=Modifier.width(28.dp))
                             AsyncImage(track.thumbnail,null,Modifier.width(90.dp).height(50.dp).clip(RoundedCornerShape(8.dp)),contentScale=ContentScale.Crop)
@@ -186,7 +188,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                         LazyRow(Modifier.focusGroup().then(sectionKeys(null,0 to playlistFocus)).onFocusChanged { if(it.hasFocus) focusSection=2 },horizontalArrangement=Arrangement.spacedBy(22.dp),contentPadding=PaddingValues(6.dp)) {
                             itemsIndexed(channels,key={ index,c -> "${c.browseId}:$index" }) { index,c ->
                                 Column(Modifier.width(90.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                                    Surface(onClick={ openCard(c) },modifier=Modifier.panelFocus().size(70.dp).then(if(index==0) Modifier.focusRequester(channelFocus).railBoundary() else Modifier),shape=ClickableSurfaceDefaults.shape(CircleShape)) {
+                                    Surface(onClick={ openCard(c) },modifier=Modifier.panelFocus().size(70.dp).focusPop(shape=CircleShape).then(if(index==0) Modifier.focusRequester(channelFocus).railBoundary() else Modifier),shape=ClickableSurfaceDefaults.shape(CircleShape),scale=ClickableSurfaceDefaults.scale(focusedScale=1f)) {
                                         AsyncImage(c.thumbnail,c.title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
                                     }
                                     Text(c.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.labelMedium)
@@ -238,18 +240,17 @@ internal fun MusicIcon(icon:Int,label:String,size:Int=22) {
 
 @Composable
 fun MusicPlayerBar(track:MusicTrack,isPlaying:Boolean,canPrevious:Boolean,canNext:Boolean,queueSize:Int,
-    onPrevious:()->Unit,onToggle:()->Unit,onNext:()->Unit,onQueue:()->Unit,onPhotos:()->Unit,modifier:Modifier=Modifier) {
+    onPrevious:()->Unit,onToggle:()->Unit,onNext:()->Unit,onQueue:()->Unit,modifier:Modifier=Modifier) {
     Row(modifier.fillMaxWidth().height(70.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xF0101C30)).padding(horizontal=14.dp,vertical=8.dp),
         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
         AsyncImage(track.thumbnail,null,Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),contentScale=ContentScale.Crop)
         Column(Modifier.weight(1f)) {
-            Text(track.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyLarge)
+            Text(track.title,color=Color.White,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyLarge)
             Text(if(isPlaying) "Now playing" else "Paused",color=Color(0xFFADBED9),style=MaterialTheme.typography.labelSmall)
         }
         Button(onClick=onPrevious,enabled=canPrevious,contentPadding=PaddingValues(10.dp),modifier=Modifier.railBoundary()) { MusicIcon(R.drawable.ic_media_previous,"Previous track") }
         Button(onClick=onToggle,contentPadding=PaddingValues(10.dp),modifier=if(!canPrevious) Modifier.railBoundary() else Modifier) { MusicIcon(if(isPlaying) R.drawable.ic_media_pause else R.drawable.ic_media_play,if(isPlaying) "Pause" else "Play") }
         Button(onClick=onNext,enabled=canNext,contentPadding=PaddingValues(10.dp)) { MusicIcon(R.drawable.ic_media_next,"Next track") }
         Button(onClick=onQueue) { MusicIcon(R.drawable.ic_media_queue,"");Spacer(Modifier.width(6.dp));Text("Queue · $queueSize") }
-        Button(onClick=onPhotos) { MusicIcon(R.drawable.ic_nav_photos,"");Spacer(Modifier.width(6.dp));Text("Photos") }
     }
 }

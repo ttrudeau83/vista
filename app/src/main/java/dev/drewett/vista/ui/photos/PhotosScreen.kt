@@ -17,7 +17,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.tv.material3.Button
+import dev.drewett.vista.ui.components.VistaButton as Button
 import androidx.tv.material3.Text
 import dev.drewett.vista.data.immich.ImmichRepository
 import dev.drewett.vista.ui.home.ImmichBackgroundState

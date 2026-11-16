@@ -135,6 +135,9 @@ private fun PanelContent(
         Text(clock, style = MaterialTheme.typography.displayLarge, color = MaterialTheme.colorScheme.onSurface)
 
         Tile("Theme", themeMode.label, R.drawable.ic_theme, Modifier.fillMaxWidth().focusRequester(firstTile), onClick = onCycleTheme)
+        Tile("Appearance", "Outline & gradient colors", R.drawable.ic_theme, Modifier.fillMaxWidth()) {
+            context.startActivity(Intent(context, dev.drewett.vista.AppearanceSettingsActivity::class.java))
+        }
         Tile("Clock format", if (use24Hour) "24 hour" else "12 hour", R.drawable.ic_clock, Modifier.fillMaxWidth(), onClick = onToggleClockFormat)
         Tile("Screensaver clock", if (screensaverClock) "On" else "Off", R.drawable.ic_clock, Modifier.fillMaxWidth(), onClick = onToggleScreensaverClock)
         Tile("Immich photos", "Configure", R.drawable.ic_display, Modifier.fillMaxWidth()) {

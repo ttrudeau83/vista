@@ -31,7 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
-import androidx.tv.material3.Button
+import dev.drewett.vista.ui.components.VistaButton as Button
 import androidx.tv.material3.Text
 import dev.drewett.vista.ui.VistaSignals
 import dev.drewett.vista.ui.apps.AppsScreen
@@ -54,7 +54,14 @@ fun HomeScreen(
     backgroundViewModel: ImmichBackgroundViewModel = viewModel(),
 ) {
     val photo by backgroundViewModel.photo.collectAsStateWithLifecycle()
-    MaterialTheme(colorScheme = if (photo.file != null) dev.drewett.vista.ui.theme.VistaDarkColors else MaterialTheme.colorScheme) {
+    val colors = MaterialTheme.colorScheme
+    val customGradient = dev.drewett.vista.ui.theme.LocalVistaAppearance.current.customGradient
+    val darkColors = dev.drewett.vista.ui.theme.VistaDarkColors
+    MaterialTheme(colorScheme = if (photo.file != null) darkColors.copy(
+        primary = colors.primary, onPrimary = colors.onPrimary,
+        background = if(customGradient) colors.background else darkColors.background,
+        onBackground = if(customGradient) colors.onBackground else darkColors.onBackground,
+    ) else colors) {
         androidx.compose.runtime.CompositionLocalProvider(androidx.tv.material3.LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
             HomeContent(onOpenQuickSettings, viewModel, photo, use24Hour)
         }

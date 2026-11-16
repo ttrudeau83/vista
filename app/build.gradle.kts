@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 11
-        versionName = "0.4.7-video-frame"
+        versionCode = 12
+        versionName = "0.4.8-appearance"
     }
 
     buildTypes {

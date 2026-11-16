@@ -20,6 +20,29 @@ class SettingsRepository(private val context: Context) {
     private val ambientFitKey = booleanPreferencesKey("ambient_fit_whole_image")
     private val photoMotionKey = stringPreferencesKey("ambient_photo_motion")
     private val ambientVideosKey = booleanPreferencesKey("ambient_include_videos")
+    private val focusColorKey=stringPreferencesKey("focus_outline_color")
+    private val gradientStartKey=stringPreferencesKey("gradient_start_color")
+    private val gradientEndKey=stringPreferencesKey("gradient_end_color")
+    private val customGradientKey=booleanPreferencesKey("custom_gradient")
+    val appearance:Flow<AppearanceSettings> = context.settingsDataStore.data.map { prefs ->
+        val defaults=AppearanceSettings()
+        AppearanceSettings(
+            AppearanceColors.normalize(prefs[focusColorKey].orEmpty()) ?: defaults.focus,
+            AppearanceColors.normalize(prefs[gradientStartKey].orEmpty()) ?: defaults.gradientStart,
+            AppearanceColors.normalize(prefs[gradientEndKey].orEmpty()) ?: defaults.gradientEnd,
+            prefs[customGradientKey] ?: false,
+        )
+    }
+    suspend fun setAppearanceColor(target:AppearanceColor,raw:String) {
+        val value=requireNotNull(AppearanceColors.normalize(raw)) { "Enter a six-digit color." }
+        context.settingsDataStore.edit { prefs ->
+            prefs[when(target) { AppearanceColor.FOCUS->focusColorKey;AppearanceColor.GRADIENT_START->gradientStartKey;AppearanceColor.GRADIENT_END->gradientEndKey }]=value
+            if(target!=AppearanceColor.FOCUS) prefs[customGradientKey]=true
+        }
+    }
+    suspend fun resetAppearance() { context.settingsDataStore.edit {
+        it.remove(focusColorKey);it.remove(gradientStartKey);it.remove(gradientEndKey);it.remove(customGradientKey)
+    } }
 
     val use24Hour: Flow<Boolean> = context.settingsDataStore.data.map { it[use24HourKey] ?: false }
     val screensaverClock: Flow<Boolean> = context.settingsDataStore.data.map { it[screensaverClockKey] ?: true }

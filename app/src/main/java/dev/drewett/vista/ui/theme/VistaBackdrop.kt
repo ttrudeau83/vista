@@ -13,9 +13,11 @@ import androidx.tv.material3.MaterialTheme
 @Composable
 fun Modifier.vistaBackdrop(): Modifier {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val appearance=LocalVistaAppearance.current
     return drawWithCache {
         val base = Brush.linearGradient(
-            if (dark) listOf(Color(0xFF14232F), Color(0xFF131321), Color(0xFF092329))
+            if(appearance.customGradient) listOf(appearanceColor(appearance.gradientStart),appearanceColor(appearance.gradientEnd))
+            else if (dark) listOf(Color(0xFF14232F), Color(0xFF131321), Color(0xFF092329))
             else listOf(Color(0xFFE4EEF5), Color(0xFFECE8F5), Color(0xFFDDEFEF)),
             start = Offset.Zero, end = Offset(size.width, size.height),
         )
@@ -24,6 +26,6 @@ fun Modifier.vistaBackdrop(): Modifier {
             center = Offset(size.width * 0.22f, size.height * 0.12f),
             radius = size.maxDimension.coerceAtLeast(1f),
         )
-        onDrawBehind { drawRect(base); drawRect(shade) }
+        onDrawBehind { drawRect(base); if(!appearance.customGradient) drawRect(shade) }
     }
 }
