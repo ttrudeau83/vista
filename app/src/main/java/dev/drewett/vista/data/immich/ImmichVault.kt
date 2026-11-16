@@ -35,7 +35,8 @@ internal class ImmichVault(context: Context) {
             val albumId = json.optString("albumId").takeIf { ImmichProtocol.id(it) != null }
             val namespace = json.optString("namespace").takeIf { ImmichProtocol.id(it) != null }
             return SavedImmich(server, apiKey, albumId, json.optString("albumName").takeIf { it.isNotBlank() },
-                json.optBoolean("fit", false), namespace)
+                json.optBoolean("fit", false), namespace,
+                runCatching { SlideshowMode.valueOf(json.optString("slideshowMode")) }.getOrDefault(SlideshowMode.RANDOM))
         } finally { plain.fill(0) }
     }
 
@@ -43,6 +44,7 @@ internal class ImmichVault(context: Context) {
         val plain = JSONObject().put("server", saved.server).put("key", saved.key)
             .put("albumId", saved.albumId).put("albumName", saved.albumName)
             .put("fit", saved.fit).put("namespace", saved.namespace)
+            .put("slideshowMode", saved.slideshowMode.name)
             .toString().toByteArray(Charsets.UTF_8)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
@@ -78,7 +80,8 @@ internal class SavedImmich(
     val albumName: String? = null,
     val fit: Boolean = false,
     val namespace: String? = null,
+    val slideshowMode: SlideshowMode = SlideshowMode.RANDOM,
 ) {
-    fun publicConfig() = ImmichConfig(server, true, albumId, albumName, fit, false, false, namespace)
+    fun publicConfig() = ImmichConfig(server, true, albumId, albumName, fit, false, false, namespace, slideshowMode)
     override fun toString() = "SavedImmich(redacted)"
 }

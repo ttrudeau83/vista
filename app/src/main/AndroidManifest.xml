@@ -72,6 +72,10 @@
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Vista" />
 
+        <activity android:name=".MusicSettingsActivity" android:exported="false" android:theme="@style/Theme.Vista" />
+        <activity android:name=".PhotoGalleryActivity" android:exported="false" android:theme="@style/Theme.Vista" />
+        <activity android:name=".PhotoSlideshowActivity" android:exported="false" android:theme="@style/Theme.Vista" />
+
         <!-- Translucent host for the quick-settings overlay (opened by the Settings key anywhere) -->
         <activity
             android:name=".QuickSettingsActivity"

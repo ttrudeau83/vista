@@ -17,6 +17,7 @@ data class ImmichConfig(
     val allowHttp: Boolean = false,
     val loading: Boolean = true,
     val namespace: String? = null,
+    val slideshowMode: SlideshowMode = SlideshowMode.RANDOM,
 )
 
 open class ImmichException(message: String) : Exception(message)
@@ -74,6 +75,23 @@ object ImmichProtocol {
 
     fun searchImages(json: String): List<String> = JSONObject(json).optJSONObject("assets")
         ?.optJSONArray("items")?.let(::images).orEmpty()
+
+    internal fun photoPage(json: String): PhotoPage {
+        val response = JSONObject(json).getJSONObject("assets")
+        val items = response.getJSONArray("items")
+        val assets = buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                if (item.optString("type") != "IMAGE" || item.optBoolean("isTrashed", false)) continue
+                val id = id(item.optString("id")) ?: continue
+                val rawDate = item.optString("localDateTime").ifBlank { item.optString("fileCreatedAt") }
+                val date = try { java.time.LocalDate.parse(rawDate.take(10)).toString() } catch (_: Exception) { null }
+                add(PhotoAsset(id, date))
+            }
+        }.distinctBy { it.id }
+        val nextPage = response.optString("nextPage").toIntOrNull()?.takeIf { it in 1..1_000_000 }
+        return PhotoPage(assets, response.optInt("total", assets.size).coerceAtLeast(assets.size), nextPage)
+    }
 
     private fun firstImage(assets: JSONArray): String? {
         return images(assets).firstOrNull()

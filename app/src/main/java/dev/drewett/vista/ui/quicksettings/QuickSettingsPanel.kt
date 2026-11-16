@@ -117,7 +117,6 @@ private fun PanelContent(
 
     fun open(action: String) {
         runCatching { context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-        onDismiss()
     }
 
     Column(
@@ -139,11 +138,15 @@ private fun PanelContent(
         Tile("Screensaver clock", if (screensaverClock) "On" else "Off", R.drawable.ic_clock, Modifier.fillMaxWidth(), onClick = onToggleScreensaverClock)
         Tile("Immich photos", "Configure", R.drawable.ic_display, Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, dev.drewett.vista.ImmichSettingsActivity::class.java))
-            onDismiss()
         }
         Tile("Family calendar", "Open", R.drawable.ic_clock, Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, dev.drewett.vista.FamilyCalendarActivity::class.java))
-            onDismiss()
+        }
+        Tile("Music account", "Connect", R.drawable.ic_audio, Modifier.fillMaxWidth()) {
+            context.startActivity(Intent(context, dev.drewett.vista.MusicSettingsActivity::class.java))
+        }
+        Tile("Start photo screensaver", "Keep music playing", R.drawable.ic_screensaver, Modifier.fillMaxWidth()) {
+            context.startActivity(Intent(context, dev.drewett.vista.PhotoSlideshowActivity::class.java))
         }
         SubHeader("Google TV settings")
         Tile("Wi-Fi", wifiName ?: "Open", R.drawable.ic_wifi, Modifier.fillMaxWidth()) { open(Settings.ACTION_WIFI_SETTINGS) }
@@ -193,6 +196,7 @@ private fun PanelContent(
             GridTile("Date & time", R.drawable.ic_clock) { open(Settings.ACTION_DATE_SETTINGS) }
         }
         Tile("Reload Vista", "", R.drawable.ic_reload, Modifier.fillMaxWidth()) {
+            dev.drewett.vista.ui.VistaSignals.refresh()
             (context as? android.app.Activity)?.recreate()
             onDismiss()
         }

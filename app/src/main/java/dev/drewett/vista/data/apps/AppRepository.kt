@@ -36,6 +36,7 @@ class AppRepository(private val context: Context) {
         if (into.containsKey(pkg)) return              // first (leanback) entry wins
 
         val appInfo: ApplicationInfo = activity.applicationInfo
+        if (!activity.enabled || !appInfo.enabled || appInfo.flags and ApplicationInfo.FLAG_INSTALLED == 0) return
         val componentName = ComponentName(pkg, activity.name)
         val banner = if (leanback) {
             runCatching { pm.getActivityBanner(componentName) }.getOrNull()
@@ -68,6 +69,7 @@ class AppRepository(private val context: Context) {
 
     /** Launch an app via its resolved component. */
     fun launch(entry: AppEntry) {
+        if (!isPackageEnabled(entry.packageName)) return
         val intent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(if (entry.isLeanback) Intent.CATEGORY_LEANBACK_LAUNCHER else Intent.CATEGORY_LAUNCHER)
             component = entry.componentName
@@ -75,6 +77,16 @@ class AppRepository(private val context: Context) {
         }
         runCatching { context.startActivity(intent) }
     }
+
+    /** Includes enabled installed publishers even when they do not expose a launcher activity. */
+    fun enabledPackages(): Set<String> = pm.getInstalledApplications(0)
+        .filter { it.enabled && it.flags and ApplicationInfo.FLAG_INSTALLED != 0 }
+        .mapTo(mutableSetOf()) { it.packageName }
+
+    fun isPackageEnabled(packageName: String): Boolean = runCatching {
+        val info = pm.getApplicationInfo(packageName, 0)
+        info.enabled && info.flags and ApplicationInfo.FLAG_INSTALLED != 0
+    }.getOrDefault(false)
 
     /** Open the system App Info screen for an app. */
     fun openAppInfo(packageName: String) {

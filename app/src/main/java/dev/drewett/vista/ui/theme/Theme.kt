@@ -3,6 +3,8 @@ package dev.drewett.vista.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
 
 /**
  * Adaptive day/night theme. Day = light & bright (projector readability in daylight);
@@ -16,6 +18,6 @@ fun VistaTheme(
     MaterialTheme(
         colorScheme = if (dark) VistaDarkColors else VistaLightColors,
         typography = VistaTypography,
-        content = content,
+        content = { CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground, content = content) },
     )
 }

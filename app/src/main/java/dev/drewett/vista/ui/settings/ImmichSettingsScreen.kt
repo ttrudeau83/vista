@@ -21,6 +21,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -34,9 +35,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import kotlinx.coroutines.launch
 
 @Composable
 fun ImmichSettingsScreen(onDone: () -> Unit, model: ImmichSettingsViewModel = viewModel()) {
+    val context = LocalContext.current
+    val repository = remember { dev.drewett.vista.data.immich.ImmichRepository.get(context) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val config by model.config.collectAsStateWithLifecycle()
     val state by model.state.collectAsStateWithLifecycle()
     var server by remember { mutableStateOf("") }
@@ -58,7 +63,7 @@ fun ImmichSettingsScreen(onDone: () -> Unit, model: ImmichSettingsViewModel = vi
                 Button(onClick = { apiKey = ""; onDone() }, modifier = Modifier.focusRequester(doneFocus)) { Text("Done") }
             }
         }
-        item { Text("Connect your server, then choose an album. This preview displays one photo on For you.", style = MaterialTheme.typography.bodyLarge) }
+        item { Text("Choose an album for Home, Photos, and the cached screensaver slideshow.", style = MaterialTheme.typography.bodyLarge) }
         item {
             SettingsField("Server URL", server, { server = it }, "https://photos.example.com", enabled = !state.busy && !config.loading)
         }
@@ -81,6 +86,15 @@ fun ImmichSettingsScreen(onDone: () -> Unit, model: ImmichSettingsViewModel = vi
                 style = MaterialTheme.typography.bodyLarge)
         }
         if (config.configured) {
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(onClick = { context.startActivity(android.content.Intent(context, dev.drewett.vista.PhotoGalleryActivity::class.java)) }) { Text("Browse thumbnails / hidden photos") }
+                    Button(onClick = { scope.launch {
+                        repository.setSlideshowMode(if (config.slideshowMode == dev.drewett.vista.data.immich.SlideshowMode.RANDOM) dev.drewett.vista.data.immich.SlideshowMode.ON_THIS_DAY else dev.drewett.vista.data.immich.SlideshowMode.RANDOM)
+                    } }) { Text(if (config.slideshowMode == dev.drewett.vista.data.immich.SlideshowMode.RANDOM) "Order: Random" else "Order: On this day") }
+                }
+                Text("On this day uses previous-year matches in the loaded album; if none are available it falls back to random photos.", style = MaterialTheme.typography.bodyMedium)
+            }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Button(onClick = model::loadAlbums, enabled = !state.busy) { Text("Refresh albums") }

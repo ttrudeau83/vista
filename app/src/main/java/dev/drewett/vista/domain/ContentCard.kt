@@ -29,7 +29,12 @@ data class ContentCard(
     val durationMillis: Int,
     val positionMillis: Int,
     val lastEngagement: Long,
+    val source: String = "preview",
+    val channelId: Long? = null,
+    val channelName: String? = null,
+    val internalProviderId: String? = null,
 ) {
+    val stableKey: String get() = "$packageName:$source:$channelId:$id"
     /** width / height for this poster. */
     val aspectRatioFloat: Float
         get() = when (aspectRatioCode) {

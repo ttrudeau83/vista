@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 3
-        versionName = "0.3.0-family-home"
+        versionCode = 5
+        versionName = "0.4.1-cache-navigation"
     }
 
     buildTypes {

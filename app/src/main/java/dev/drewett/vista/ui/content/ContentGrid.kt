@@ -58,7 +58,7 @@ fun ContentGrid(
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
-                itemsIndexed(items, key = { _, it -> it.id }) { index, card ->
+                itemsIndexed(items, key = { _, it -> it.stableKey }) { index, card ->
                     ContentCardView(
                         card = card,
                         onClick = { onLaunch(card) },

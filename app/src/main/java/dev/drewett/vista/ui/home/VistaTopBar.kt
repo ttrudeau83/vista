@@ -1,8 +1,5 @@
 package dev.drewett.vista.ui.home
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
@@ -12,41 +9,31 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInParent
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.ClickableSurfaceDefaults
@@ -54,23 +41,15 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import dev.drewett.vista.R
-import dev.drewett.vista.data.system.AccountRepository
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-enum class VistaTab(val label: String, val action: Boolean = false) {
-    FOR_YOU("For you"),
-    MOVIES("Movies"),
-    SHOWS("Shows"),
-    SMARTTUBE("SmartTube", true),
-    MUSIC("Music", true),
-    PHOTOS("Photos", true),
-    APPS("Apps"),
+enum class VistaTab(val label: String) {
+    FOR_YOU("For you"), MOVIES("Movies"), SHOWS("Shows"), SMARTTUBE("SmartTube"),
+    MUSIC("Music"), PHOTOS("Photos"), APPS("Apps"),
 }
-
-private val BarHeight = 48.dp
 
 @Composable
 fun VistaTopBar(
@@ -83,178 +62,91 @@ fun VistaTopBar(
     barFocusRequester: FocusRequester? = null,
     contentFocus: FocusRequester? = null,
 ) {
-    val scrim = MaterialTheme.colorScheme.background
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(108.dp)
-            .background(Brush.verticalGradient(0f to scrim.copy(alpha = 0.9f), 1f to Color.Transparent)),
-    ) {
+    val colors = MaterialTheme.colorScheme
+    val tabFocus = remember { List(VistaTab.entries.size) { FocusRequester() } }
+    val searchFocus = remember { FocusRequester() }
+    val settingsFocus = remember { FocusRequester() }
+    Box(modifier.fillMaxWidth().height(108.dp).background(Brush.verticalGradient(
+        0f to colors.background.copy(alpha = 0.9f), 1f to Color.Transparent))) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 40.dp, vertical = 22.dp)
-                .focusGroup()
-                // Pressing down from any bar item enters the active screen's content.
+            Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 22.dp).focusGroup()
                 .onPreviewKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown &&
-                        event.key == Key.DirectionDown &&
-                        contentFocus != null
-                    ) {
+                    if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown && contentFocus != null) {
                         runCatching { contentFocus.requestFocus(); true }.getOrDefault(false)
-                    } else {
-                        false
-                    }
+                    } else false
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SegmentedTabs(selected = selected, onSelect = onSelect, barFocusRequester = barFocusRequester)
+            Row(Modifier.height(48.dp)
+                .then(if (barFocusRequester != null) Modifier.focusRequester(barFocusRequester) else Modifier)
+                .focusProperties { enter = { tabFocus[selected.ordinal] } }.focusGroup()) {
+                VistaTab.entries.forEach { tab ->
+                    Surface(
+                        onClick = { onSelect(tab) },
+                        modifier = Modifier.fillMaxHeight()
+                            .focusRequester(tabFocus[tab.ordinal])
+                            .focusProperties {
+                                left = tabFocus[(tab.ordinal - 1).coerceAtLeast(0)]
+                                right = if (tab.ordinal < VistaTab.entries.lastIndex) tabFocus[tab.ordinal + 1] else FocusRequester.Default
+                            }
+                            .onPreviewKeyEvent { event ->
+                                if (event.key == Key.DirectionLeft || event.key == Key.DirectionRight) {
+                                    if (event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 0) {
+                                        val next = tab.ordinal + if (event.key == Key.DirectionRight) 1 else -1
+                                        if (next in tabFocus.indices) tabFocus[next].requestFocus()
+                                        else if (next == tabFocus.size) searchFocus.requestFocus()
+                                    }
+                                    true
+                                } else false
+                            }
+                            .onFocusChanged { if (it.isFocused) onSelect(tab) },
+                        shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                        colors = ClickableSurfaceDefaults.colors(
+                            containerColor = if (selected == tab) colors.onBackground.copy(alpha = 0.92f) else Color.Transparent,
+                            contentColor = if (selected == tab) colors.background else colors.onBackground.copy(alpha = 0.65f),
+                            focusedContainerColor = colors.primary,
+                            focusedContentColor = colors.onPrimary,
+                            pressedContainerColor = colors.onBackground,
+                            pressedContentColor = colors.background,
+                        ),
+                    ) {
+                        Box(Modifier.fillMaxHeight().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+                            Text(tab.label, style = MaterialTheme.typography.titleMedium,
+                                fontWeight = if (selected == tab) FontWeight.SemiBold else FontWeight.Medium)
+                        }
+                    }
+                }
+            }
             Box(Modifier.weight(1f))
             Clock(use24Hour)
             Box(Modifier.size(16.dp))
-            IconButton(R.drawable.ic_search, "Search", onClick = onOpenSearch)
+            BarIcon(R.drawable.ic_search, "Search", onOpenSearch, Modifier.focusRequester(searchFocus).focusProperties { left = tabFocus.last(); right = settingsFocus })
             Box(Modifier.size(12.dp))
-            IconButton(R.drawable.ic_settings, "Vista settings", onClick = onOpenQuickSettings)
+            BarIcon(R.drawable.ic_settings, "Vista settings", onOpenQuickSettings, Modifier.focusRequester(settingsFocus).focusProperties { left = searchFocus; right = FocusRequester.Cancel })
         }
     }
 }
 
 @Composable
-private fun SegmentedTabs(
-    selected: VistaTab,
-    onSelect: (VistaTab) -> Unit,
-    barFocusRequester: FocusRequester? = null,
-) {
-    val onBg = MaterialTheme.colorScheme.onBackground
-    val density = LocalDensity.current
-    val tabs = VistaTab.entries
-    val bounds = remember { mutableStateListOf(*Array(tabs.size) { 0f to 0f }) }
-
-    val sel = selected.ordinal
-    val (targetXpx, targetWpx) = bounds.getOrElse(sel) { 0f to 0f }
-    val pillX by animateDpAsState(with(density) { targetXpx.toDp() }, tween(280), label = "pillX")
-    val pillW by animateDpAsState(with(density) { targetWpx.toDp() }, tween(280), label = "pillW")
-
-    Box(
-        Modifier
-            .focusGroup()
-            .height(BarHeight)
-            .clip(RoundedCornerShape(50))
-            .background(onBg.copy(alpha = 0.12f))
-            .padding(4.dp),
-    ) {
-        if (targetWpx > 0f) {
-            Box(
-                Modifier
-                    .offset(x = pillX)
-                    .width(pillW)
-                    .fillMaxHeight()
-                    .clip(RoundedCornerShape(50))
-                    .background(onBg.copy(alpha = 0.92f)),
-            )
-        }
-        Row(Modifier.fillMaxHeight()) {
-            tabs.forEachIndexed { i, tab ->
-                SegmentTab(
-                    label = tab.label,
-                    selected = i == sel,
-                    onSelect = { onSelect(tab) },
-                    selectOnFocus = !tab.action,
-                    onBounds = { x, w -> bounds[i] = x to w },
-                    focusRequester = barFocusRequester.takeIf { i == sel },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SegmentTab(
-    label: String,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    selectOnFocus: Boolean,
-    onBounds: (Float, Float) -> Unit,
-    focusRequester: FocusRequester? = null,
-) {
-    val onBg = MaterialTheme.colorScheme.onBackground
-    val bg = MaterialTheme.colorScheme.background
-    Box(
-        Modifier
-            .fillMaxHeight()
-            .onGloballyPositioned { onBounds(it.positionInParent().x, it.size.width.toFloat()) }
-            .onFocusChanged { if (it.hasFocus && selectOnFocus) onSelect() },
-    ) {
-        Surface(
-            onClick = onSelect,
-            modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier).fillMaxHeight(),
-            shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
-            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
-            colors = ClickableSurfaceDefaults.colors(
-                containerColor = Color.Transparent,
-                focusedContainerColor = if (selectOnFocus) Color.Transparent else onBg.copy(alpha = 0.22f),
-                pressedContainerColor = Color.Transparent,
-                contentColor = if (selected) bg else onBg.copy(alpha = 0.6f),
-                focusedContentColor = if (selected) bg else onBg,
-                pressedContentColor = if (selected) bg else onBg,
-            ),
-        ) {
-            Box(
-                modifier = Modifier.fillMaxHeight().padding(horizontal = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        platformStyle = PlatformTextStyle(includeFontPadding = false),
-                    ),
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun IconButton(iconRes: Int, contentDescription: String, onClick: () -> Unit) {
-    val onBg = MaterialTheme.colorScheme.onBackground
-    val onPrimary = MaterialTheme.colorScheme.onPrimary
+private fun BarIcon(icon: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.size(40.dp).onFocusChanged { focused = it.isFocused },
+    val colors = MaterialTheme.colorScheme
+    Surface(onClick = onClick, modifier = modifier.size(40.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(CircleShape),
-        colors = ClickableSurfaceDefaults.colors(
-            containerColor = onBg.copy(alpha = 0.12f),
-            focusedContainerColor = MaterialTheme.colorScheme.primary,
-        ),
-    ) {
+        colors = ClickableSurfaceDefaults.colors(containerColor = colors.onBackground.copy(alpha = 0.12f),
+            focusedContainerColor = colors.primary)) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Image(
-                painter = painterResource(iconRes),
-                contentDescription = contentDescription,
-                modifier = Modifier.size(22.dp),
-                colorFilter = ColorFilter.tint(if (focused) onPrimary else onBg),
-            )
+            Image(painterResource(icon), label, Modifier.size(22.dp),
+                colorFilter = ColorFilter.tint(if (focused) colors.onPrimary else colors.onBackground))
         }
     }
 }
 
 @Composable
 private fun Clock(use24Hour: Boolean) {
-    var time by remember(use24Hour) { mutableStateOf(currentTime(use24Hour)) }
-    LaunchedEffect(use24Hour) {
-        while (true) {
-            time = currentTime(use24Hour)
-            delay(20_000)
-        }
-    }
-    Text(
-        text = time,
-        style = MaterialTheme.typography.titleMedium,
-        color = MaterialTheme.colorScheme.onBackground,
-    )
+    var now by remember { mutableStateOf(Date()) }
+    LaunchedEffect(Unit) { while (true) { now = Date(); delay(20_000) } }
+    Text(SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault()).format(now),
+        style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onBackground)
 }
-
-private fun currentTime(use24Hour: Boolean): String =
-    SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a", Locale.getDefault()).format(Date())

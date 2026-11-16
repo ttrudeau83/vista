@@ -1,6 +1,7 @@
 package dev.drewett.vista.data.immich
 
 import java.io.InputStream
+import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -96,6 +97,65 @@ class ImmichClientTest {
         }
     }
 
+    @Test
+    fun catalogRequestsOneBoundedMetadataPageWithoutTimelineOrAlbumDetail() = runBlocking {
+        withServer { server ->
+            server.route("/api/search/metadata") { request ->
+                val filter = JSONObject(request.body)
+                if (request.method == "POST" && filter.getInt("size") == 100 && filter.getInt("page") == 3 &&
+                    filter.getJSONArray("albumIds").getString(0) == albumId && filter.getString("type") == "IMAGE")
+                    Response(body = """{"assets":{"total":100,"count":100,"nextPage":"4","items":[{"id":"$imageId","type":"IMAGE","localDateTime":"2020-11-15T12:00:00Z"}]}}""")
+                else Response(400)
+            }
+            val page = ImmichClient("${server.origin}/api", "test-only-key").catalogPage(albumId, 3)
+            assertEquals(100, page.total)
+            assertEquals(4, page.nextPage)
+            assertEquals("2020-11-15", page.assets.single().date)
+        }
+    }
+
+    @Test
+    fun fullScreenPhotosRequestFullsizeRatherThanLowResolutionPreview() = runBlocking {
+        withServer { server ->
+            server.route("/api/assets/$imageId/thumbnail") { request ->
+                if (request.target.contains("size=fullsize"))
+                    Response(body = "fullsize-image", headers = mapOf("Content-Type" to "image/jpeg"))
+                else Response(400)
+            }
+            val output = ByteArrayOutputStream()
+            ImmichClient("${server.origin}/api", "test-only-key").image(imageId, output)
+            assertEquals("fullsize-image", output.toString("UTF-8"))
+        }
+    }
+
+    @Test
+    fun firstPhotoCanBootstrapWithAnExplicitSmallPreview() = runBlocking {
+        withServer { server ->
+            server.route("/api/assets/$imageId/thumbnail") { request ->
+                if (request.target.contains("size=preview"))
+                    Response(body = "quick-preview", headers = mapOf("Content-Type" to "image/jpeg"))
+                else Response(400)
+            }
+            val output = ByteArrayOutputStream()
+            ImmichClient("${server.origin}/api", "test-only-key").preview(imageId, output)
+            assertEquals("quick-preview", output.toString("UTF-8"))
+        }
+    }
+
+    @Test
+    fun galleryThumbnailsHaveTheirOwnSmallRequestAndSizeLimit() = runBlocking {
+        withServer { server ->
+            server.route("/api/assets/$imageId/thumbnail") { request ->
+                if (request.target.contains("size=thumbnail"))
+                    Response(declaredLength = 3L * 1024 * 1024, headers = mapOf("Content-Type" to "image/jpeg"))
+                else Response(400)
+            }
+            val error = failure { ImmichClient("${server.origin}/api", "test-only-key").thumbnail(imageId, ByteArrayOutputStream()) }
+            assertTrue(error is ImmichException)
+            assertTrue(error.message.orEmpty().contains("too large"))
+        }
+    }
+
     private suspend fun failure(block: suspend () -> Unit): Exception {
         try { block() } catch (error: Exception) { return error }
         throw AssertionError("Expected the request to fail")
@@ -138,9 +198,10 @@ class ImmichClientTest {
                         val response = handlers[request.target.substringBefore('?')]?.invoke(request) ?: Response(404)
                         val bytes = response.body.toByteArray(Charsets.UTF_8)
                         val header = buildString {
-                            append("HTTP/1.1 ${response.status} Test\r\nContent-Type: application/json\r\nConnection: close\r\n")
+                            val type = response.headers.entries.firstOrNull { it.key.equals("Content-Type", true) }?.value ?: "application/json"
+                            append("HTTP/1.1 ${response.status} Test\r\nContent-Type: $type\r\nConnection: close\r\n")
                             append("Content-Length: ${response.declaredLength ?: bytes.size}\r\n")
-                            response.headers.forEach { (name, value) -> append("$name: $value\r\n") }
+                            response.headers.filterKeys { !it.equals("Content-Type", true) }.forEach { (name, value) -> append("$name: $value\r\n") }
                             append("\r\n")
                         }
                         client.getOutputStream().apply { write(header.toByteArray(Charsets.ISO_8859_1)); write(bytes); flush() }

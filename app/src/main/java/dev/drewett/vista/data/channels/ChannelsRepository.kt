@@ -9,17 +9,30 @@ import androidx.tvprovider.media.tv.WatchNextProgram
 import dev.drewett.vista.domain.ContentCard
 
 /**
- * Reads other apps' published TV content via the TvProvider (requires READ_TV_LISTINGS, granted
- * over adb). Watch-next entries → "Continue watching"; preview programs → content rows.
- *
- * Honest limitation: the single system-aggregated watch-next table needs ACCESS_ALL_EPG_DATA
- * (signature|privileged, held only by the stock launcher). We read what a non-privileged launcher
- * can — apps' own published channels/programs — and degrade gracefully to empty otherwise.
+ * Reads only published TV metadata. Firmware may restrict cross-app access even with
+ * READ_TV_LISTINGS; unavailable tables produce empty results rather than invented content.
  */
 class ChannelsRepository(private val context: Context) {
 
     private val resolver get() = context.contentResolver
     private val iconCache = HashMap<String, android.graphics.drawable.Drawable?>()
+
+    fun invalidateIcons() = iconCache.clear()
+
+    private data class PublishedChannel(val packageName: String, val name: String?)
+
+    private fun loadChannels(): Map<Long, PublishedChannel> = buildMap {
+        runCatching {
+            resolver.query(TvContractCompat.Channels.CONTENT_URI,
+                arrayOf(TvContractCompat.Channels._ID, TvContractCompat.Channels.COLUMN_PACKAGE_NAME,
+                    TvContractCompat.Channels.COLUMN_DISPLAY_NAME), null, null, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    put(cursor.getLong(0), PublishedChannel(cursor.getString(1).orEmpty(),
+                        cursor.getString(2)?.takeIf { it.isNotBlank() }))
+                }
+            }
+        }
+    }
 
     private fun iconFor(packageName: String?): android.graphics.drawable.Drawable? {
         packageName ?: return null
@@ -59,12 +72,15 @@ class ChannelsRepository(private val context: Context) {
                 durationMillis = p.durationMillis,
                 positionMillis = p.lastPlaybackPositionMillis,
                 lastEngagement = p.lastEngagementTimeUtcMillis,
+                source = "watchnext",
+                internalProviderId = c.stringOrNull(TvContractCompat.WatchNextPrograms.COLUMN_INTERNAL_PROVIDER_ID),
             )
         }.sortedByDescending { it.lastEngagement }
         return cards
     }
 
     fun loadPreviewPrograms(): List<ContentCard> {
+        val channels = loadChannels()
         val cards = query(TvContractCompat.PreviewPrograms.CONTENT_URI, PreviewProgram.PROJECTION) { c ->
             val p = PreviewProgram.fromCursor(c)
             ContentCard(
@@ -86,9 +102,17 @@ class ChannelsRepository(private val context: Context) {
                 durationMillis = p.durationMillis,
                 positionMillis = p.lastPlaybackPositionMillis,
                 lastEngagement = 0L,
+                channelId = p.channelId.takeIf { it >= 0 },
+                channelName = channels[p.channelId]?.takeIf { it.packageName == p.packageName }?.name,
+                internalProviderId = c.stringOrNull(TvContractCompat.PreviewPrograms.COLUMN_INTERNAL_PROVIDER_ID),
             )
         }
         return cards
+    }
+
+    private fun Cursor.stringOrNull(column: String): String? {
+        val index = getColumnIndex(column)
+        return if (index >= 0 && !isNull(index)) getString(index) else null
     }
 
     /** Fire the publisher's own deep-link to resume/open the content. */
@@ -116,7 +140,7 @@ class ChannelsRepository(private val context: Context) {
                         ?.let(out::add)
                 }
             }
-        }.onFailure { android.util.Log.w("VistaDiag", "query $uri failed: ${it.message}") }
+        }.onFailure { android.util.Log.w("VistaDiag", "Published TV metadata is unavailable for $uri") }
         return out
     }
 }

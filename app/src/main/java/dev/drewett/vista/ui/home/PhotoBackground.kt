@@ -19,7 +19,7 @@ import java.io.File
 fun PhotoBackground(file: File, fit: Boolean) {
     val context = LocalContext.current
     val request = remember(file) {
-        ImageRequest.Builder(context).data(file).size(1920, 1080)
+        ImageRequest.Builder(context).data(file).size(3840, 2160)
             .memoryCacheKey(file.absolutePath).diskCachePolicy(coil.request.CachePolicy.DISABLED).build()
     }
     Box(Modifier.fillMaxSize().background(Color.Black)) {

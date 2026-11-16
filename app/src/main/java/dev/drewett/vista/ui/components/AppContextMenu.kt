@@ -24,6 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
@@ -47,10 +50,15 @@ fun AppContextMenu(
     app ?: return
     BackHandler { onDismiss() }
     val firstItem = remember { FocusRequester() }
+    val openingSelect = remember(app.packageName) { OpeningSelectGate(OpeningSelectHandoff.take()) }
     LaunchedEffect(app.packageName) { runCatching { firstItem.requestFocus() } }
 
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
     Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)),
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).onPreviewKeyEvent { event ->
+            val key = event.nativeKeyEvent
+            openingSelect.consume(key.keyCode, key.downTime, key.action == android.view.KeyEvent.ACTION_UP)
+        },
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -82,9 +90,12 @@ fun AppContextMenu(
             MenuItem(if (isFavourite) "Remove from favourites" else "Add to favourites") {
                 onToggleFavourite(app); onDismiss()
             }
-            MenuItem("App info") { onAppInfo(app.packageName); onDismiss() }
+            MenuItem("Force stop / App info") { onAppInfo(app.packageName); onDismiss() }
+            Text("Force stop is available on the system App info screen.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
             MenuItem("Uninstall") { onUninstall(app.packageName); onDismiss() }
         }
+    }
     }
 }
 

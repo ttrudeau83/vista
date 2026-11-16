@@ -1,5 +1,7 @@
 # Vista
 
+Latest changes: [media, cached photos and navigation fixes](docs/MEDIA_PHOTOS_UPDATE.md).
+
 A home-screen launcher for Android TV and Google TV, written in Kotlin with Jetpack Compose for TV.
 
 This custom fork adds an optional Immich photo background and system screensaver,

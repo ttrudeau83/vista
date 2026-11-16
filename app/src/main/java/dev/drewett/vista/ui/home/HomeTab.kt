@@ -126,7 +126,7 @@ fun HomeTab(
             Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
                 Row(Modifier.fillMaxSize().padding(start = RowEdgePadding, end = 40.dp)) {
                     HeroInfo(item = heroItem, modifier = Modifier.weight(1f).padding(end = 24.dp))
-                    if (calendarPanel != null) Box(Modifier.width(220.dp)) { calendarPanel() }
+                    if (calendarPanel != null) Box(Modifier.width(320.dp)) { calendarPanel() }
                 }
             }
             SectionsList(
@@ -138,7 +138,7 @@ fun HomeTab(
                 topBarFocus = topBarFocus,
                 contentFocus = contentFocus,
                 resetSignal = resetSignal,
-                modifier = Modifier.height(330.dp),
+                modifier = Modifier.height(246.dp),
             )
         }
     }
@@ -248,17 +248,13 @@ private fun SectionsList(
     val rowPadPx = with(density) { RowEdgePadding.toPx() }
     val colPadPx = with(density) { 4.dp.toPx() }
 
-    LaunchedEffect(sections.firstOrNull()?.key) {
-        if (sections.isNotEmpty() && !initialFocusDone) {
-            runCatching { firstItem.requestFocus() }
-            initialFocusDone = true
-        }
-    }
+    var observedReset by remember { mutableStateOf(resetSignal) }
     LaunchedEffect(resetSignal) {
-        if (resetSignal > 0 && sections.isNotEmpty()) {
+        if (resetSignal != observedReset && sections.isNotEmpty()) {
             runCatching { listState.scrollToItem(0) }
             runCatching { firstItem.requestFocus() }
         }
+        observedReset = resetSignal
     }
 
     LazyColumn(
@@ -319,7 +315,7 @@ private fun SectionsList(
                                     }
                                 }
 
-                                is ContentSection -> itemsIndexed(section.items, key = { _, c -> c.id }) { itemIndex, card ->
+                                is ContentSection -> itemsIndexed(section.items, key = { _, c -> c.stableKey }) { itemIndex, card ->
                                     CardSlot(firstItem.takeIf { sectionIndex == 0 && itemIndex == 0 }) {
                                         ContentCardView(
                                             card = card,

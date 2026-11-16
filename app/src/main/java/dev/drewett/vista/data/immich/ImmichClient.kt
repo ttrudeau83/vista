@@ -14,6 +14,14 @@ import java.net.URLEncoder
 internal class ImmichClient(private val server: String, private val apiKey: String) {
     suspend fun albums(): List<ImmichAlbum> = ImmichProtocol.albums(json("/albums"))
 
+    suspend fun catalogPage(albumId: String, page: Int): PhotoPage {
+        requireNotNull(ImmichProtocol.id(albumId))
+        require(page in 1..1_000_000)
+        val filter = JSONObject().put("albumIds", JSONArray().put(albumId)).put("type", "IMAGE")
+            .put("isTrashed", false).put("size", 100).put("page", page).toString()
+        return ImmichProtocol.photoPage(json("/search/metadata", filter))
+    }
+
     suspend fun firstImage(albumId: String): String {
         requireNotNull(ImmichProtocol.id(albumId))
         // Timeline columns are supported in both verified versions (2.7.5 and 3.4.1).
@@ -53,7 +61,19 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
 
     suspend fun image(assetId: String, output: OutputStream) {
         requireNotNull(ImmichProtocol.id(assetId))
-        request("/assets/$assetId/thumbnail?size=preview", 20L * 1024 * 1024, output, image = true)
+        // Immich 2.7.5 supports fullsize; it may redirect to the original when appropriate.
+        // This requires asset.download for those originals, rather than silently displaying a tiny preview.
+        request("/assets/$assetId/thumbnail?size=fullsize", 40L * 1024 * 1024, output, image = true)
+    }
+
+    suspend fun thumbnail(assetId: String, output: OutputStream) {
+        requireNotNull(ImmichProtocol.id(assetId))
+        request("/assets/$assetId/thumbnail?size=thumbnail", 2L * 1024 * 1024, output, image = true)
+    }
+
+    suspend fun preview(assetId: String, output: OutputStream) {
+        requireNotNull(ImmichProtocol.id(assetId))
+        request("/assets/$assetId/thumbnail?size=preview", 8L * 1024 * 1024, output, image = true)
     }
 
     private suspend fun json(path: String, body: String? = null): String {
@@ -94,7 +114,7 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
                         return@repeat
                     }
                     401 -> throw ImmichException("Immich rejected the API key. Enter a valid key.")
-                    403 -> throw ImmichException("The API key needs permission to read albums and view assets.")
+                    403 -> throw ImmichException("Check the API key permissions: album.read, asset.read, asset.view and asset.download for full-size photos.")
                     in 200..299 -> Unit
                     else -> throw ImmichException("Immich request failed (HTTP $status).")
                 }

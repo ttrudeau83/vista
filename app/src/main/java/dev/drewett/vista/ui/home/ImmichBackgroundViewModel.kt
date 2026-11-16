@@ -22,13 +22,11 @@ class ImmichBackgroundViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
-            var activeNamespace: String? = null
-            combine(repository.config, repository.photoRevision) { config, revision -> config to revision }
-                .collectLatest { (config, _) ->
-                    _photo.value = if (activeNamespace == config.namespace && config.configured)
-                        _photo.value.copy(fit = config.fit) else ImmichBackgroundState(fit = config.fit)
-                    activeNamespace = config.namespace
+            combine(repository.config, repository.currentPhoto, repository.photoRevision) { config, current, _ -> config to current }
+                .collectLatest { (config, current) ->
+                    _photo.value = ImmichBackgroundState(current?.cachedFile, config.fit)
                     if (config.loading || !config.configured || config.albumId == null) return@collectLatest
+                    if (current?.cachedFile != null) return@collectLatest
                     try {
                         val file = repository.photo()
                         _photo.value = ImmichBackgroundState(file, config.fit)

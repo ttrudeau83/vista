@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import dev.drewett.vista.data.calendar.FamilyCalendarRepository
@@ -51,24 +53,28 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.activity.compose.BackHandler
 
 @Composable
 fun FamilyCalendarPanel(modifier: Modifier = Modifier, use24Hour: Boolean = false, onOpen: () -> Unit) {
     val repository = rememberCalendarRefresh()
     val state by repository.state.collectAsStateWithLifecycle()
-    val upcoming = state.events.filter { it.endMillis > System.currentTimeMillis() }.take(2)
-    Surface(onClick = onOpen, modifier = modifier.height(104.dp)) {
+    val weekEnd = LocalDate.now().plusDays(21).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    val upcoming = state.events.filter { it.endMillis > System.currentTimeMillis() && it.startMillis < weekEnd }.take(7)
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+    Box(modifier.height(190.dp).background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f), RoundedCornerShape(12.dp))) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("Family calendar", style = MaterialTheme.typography.titleMedium)
+            Text("Family · Upcoming", style = MaterialTheme.typography.titleMedium)
             when {
                 !state.configured -> Text("Connect your calendar", style = MaterialTheme.typography.bodyMedium)
-                upcoming.isEmpty() -> Text(if (state.loading) "Loading events…" else "No upcoming events", style = MaterialTheme.typography.bodyMedium)
+                upcoming.isEmpty() -> Text(if (state.loading) "Loading events…" else "No events in the next three weeks", style = MaterialTheme.typography.bodyMedium)
                 else -> upcoming.forEach { event ->
                     Text(eventTime(event, use24Hour, true) + " · " + event.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            Text(if (state.stale) "Saved offline · Open month" else "Open month view", style = MaterialTheme.typography.labelSmall)
+            if (state.stale) Text("Saved offline", style = MaterialTheme.typography.labelSmall)
         }
+    }
     }
 }
 
@@ -84,11 +90,13 @@ fun FamilyCalendarScreen(onDone: () -> Unit, use24Hour: Boolean, model: FamilyCa
     var selected by remember { mutableStateOf(LocalDate.now()) }
     val doneFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { doneFocus.requestFocus() }
+    BackHandler { if (configure) { configure = false; feed = "" } else onDone() }
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Family calendar", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             Button(onClick = { configure = !configure }) { Text(if (configure) "Month view" else "Calendar settings") }
-            Button(onClick = onDone, modifier = Modifier.focusRequester(doneFocus)) { Text("Done") }
+            Button(onClick = { if (configure) { configure = false; feed = "" } else onDone() }, modifier = Modifier.focusRequester(doneFocus)) { Text(if (configure) "Back" else "Done") }
         }
         if (configure || !state.configured) {
             Text("In Google Calendar, open Settings → Family → Integrate calendar. Enter the Secret address in iCal format. Keep this link private.", style = MaterialTheme.typography.bodyLarge)
@@ -138,6 +146,7 @@ fun FamilyCalendarScreen(onDone: () -> Unit, use24Hour: Boolean, model: FamilyCa
                 }
             }
         }
+    }
     }
 }
 
