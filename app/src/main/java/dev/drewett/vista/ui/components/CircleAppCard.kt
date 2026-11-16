@@ -27,9 +27,9 @@ fun CircleAppCard(
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.appActivationKeys(onClick, onLongClick).aspectRatio(1f),
+        modifier = modifier.focusPop(enabled = !flatFocus).appActivationKeys(onClick, onLongClick).aspectRatio(1f),
         shape = ClickableSurfaceDefaults.shape(CircleShape),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = if (flatFocus) 1f else 1.08f),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,

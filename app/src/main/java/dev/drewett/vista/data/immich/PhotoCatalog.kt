@@ -18,9 +18,10 @@ data class PhotoAsset(
 internal data class PhotoPage(val assets: List<PhotoAsset>, val total: Int, val nextPage: Int? = null)
 
 object PhotoPolicy {
+    const val DAILY_POOL_SIZE = 60
     fun dailyPool(assets: List<PhotoAsset>, today: LocalDate = LocalDate.now()): List<PhotoAsset> =
         assets.distinctBy { it.id }.sortedBy { it.id }
-            .shuffled(kotlin.random.Random(today.toEpochDay())).take(12)
+            .shuffled(kotlin.random.Random(today.toEpochDay())).take(DAILY_POOL_SIZE)
 
     fun eligible(assets: List<PhotoAsset>, hiddenIds: Set<String>, mode: SlideshowMode,
         today: LocalDate = LocalDate.now()): List<PhotoAsset> {
@@ -47,7 +48,7 @@ object PhotoPolicy {
         val candidates = eligible(assets, hiddenIds, mode)
         val originals = candidates.filter { it.quality == PhotoQuality.FULL_SIZE }.mapNotNull { it.cachedFile }
         val currentUpgrade = visible.firstOrNull { it.id == currentId && (it.cachedFile == null || it.quality == PhotoQuality.PREVIEW) }
-        val full = originals.size >= 12 || originals.sumOf { it.length() } >= 180L * 1024 * 1024
+        val full = originals.size >= DAILY_POOL_SIZE || originals.sumOf { it.length() } >= 450L * 1024 * 1024
         if (full && currentUpgrade == null) return emptyList()
         val missing = candidates.filter { it.cachedFile == null || it.quality == PhotoQuality.PREVIEW }
         val preferred = currentUpgrade ?: if (originals.isEmpty()) candidates.firstOrNull() else null
@@ -59,8 +60,8 @@ data class CachedPhotoEntry(val key: String, val bytes: Long, val lastUsed: Long
 
 /** Shared deterministic LRU policy; protected current/downloaded photos are never evicted. */
 object PhotoCachePolicy {
-    fun evictionKeys(entries: List<CachedPhotoEntry>, protected: Set<String>, maxBytes: Long = 200L * 1024 * 1024,
-        maxFiles: Int = 24): Set<String> {
+    fun evictionKeys(entries: List<CachedPhotoEntry>, protected: Set<String>, maxBytes: Long = 512L * 1024 * 1024,
+        maxFiles: Int = 120): Set<String> {
         val remaining = entries.distinctBy { it.key }.sortedBy { it.lastUsed }.toMutableList()
         var bytes = remaining.sumOf { it.bytes.coerceAtLeast(0) }
         return buildSet {

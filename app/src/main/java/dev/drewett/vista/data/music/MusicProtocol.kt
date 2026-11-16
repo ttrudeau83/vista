@@ -5,6 +5,8 @@ import org.json.JSONObject
 data class MusicChannel(val id: String, val title: String)
 data class MusicPlaylist(val id: String, val title: String, val thumbnail: String?, val count: Int)
 data class MusicTrack(val id: String, val title: String, val thumbnail: String?)
+data class MusicHomeCard(val title:String,val thumbnail:String?,val browseId:String?=null,val playlistId:String?=null,val videoId:String?=null)
+data class MusicShelf(val title:String,val cards:List<MusicHomeCard>)
 data class MusicPairing(val userCode: String, val verificationUrl: String, val expiresAt: Long)
 data class MusicState(
     val loading: Boolean = true,
@@ -15,6 +17,8 @@ data class MusicState(
     val playlists: List<MusicPlaylist> = emptyList(),
     val playlist: MusicPlaylist? = null,
     val tracks: List<MusicTrack> = emptyList(),
+    val shelves: List<MusicShelf> = emptyList(),
+    val homeMessage: String? = null,
     val pairing: MusicPairing? = null,
     val message: String? = null,
 )

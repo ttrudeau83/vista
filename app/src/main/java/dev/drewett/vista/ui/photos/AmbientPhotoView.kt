@@ -156,9 +156,30 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
         } ?: return
         image.animate().cancel(); image.setImageBitmap(bitmap); currentFile = file; animatePhoto()
     }
+    private var motionIndex = kotlin.random.Random.nextInt(5)
     private fun animatePhoto() {
-        image.animate().cancel(); image.scaleX = 1f; image.scaleY = 1f; image.translationX = 0f
-        image.animate().scaleX(1.045f).scaleY(1.045f).translationX(8f).setDuration(20_000).setInterpolator(android.view.animation.LinearInterpolator()).start()
+        image.animate().cancel()
+        image.translationX = 0f; image.translationY = 0f
+        // Pan inside the overscan so the image never reveals an empty edge.
+        val panX = image.width * 0.018f
+        val panY = image.height * 0.018f
+        val animator = image.animate()
+        when (motionIndex++ % 5) {
+            0 -> { image.scaleX = 1f; image.scaleY = 1f; animator.scaleX(1.045f).scaleY(1.045f) }
+            1 -> { image.scaleX = 1.045f; image.scaleY = 1.045f; animator.scaleX(1f).scaleY(1f) }
+            2, 3 -> {
+                val direction = if (motionIndex % 2 == 0) 1f else -1f
+                image.scaleX = 1.05f; image.scaleY = 1.05f
+                image.translationX = -panX * direction
+                animator.translationX(panX * direction)
+            }
+            else -> {
+                image.scaleX = 1.05f; image.scaleY = 1.05f
+                image.translationY = panY
+                animator.translationY(-panY)
+            }
+        }
+        animator.setDuration(20_000).setInterpolator(android.view.animation.LinearInterpolator()).start()
     }
     private fun updateCorner() {
         val time = if (showClock) SimpleDateFormat(if (use24Hour) "HH:mm" else "h:mm a",Locale.getDefault()).format(Date()) else ""

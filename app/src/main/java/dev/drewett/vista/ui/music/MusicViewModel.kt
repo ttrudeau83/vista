@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.drewett.vista.data.music.MusicChannel
+import dev.drewett.vista.data.music.MusicHomeCard
 import dev.drewett.vista.data.music.MusicPlaylist
 import dev.drewett.vista.data.music.MusicRepository
 import kotlinx.coroutines.CancellationException
@@ -23,6 +24,7 @@ class MusicViewModel(app:Application):AndroidViewModel(app) {
     fun refresh()=action { repository.refreshLibrary() }
     fun channel(channel:MusicChannel)=action { repository.selectChannel(channel) }
     fun playlist(playlist:MusicPlaylist)=action { repository.selectPlaylist(playlist) }
+    fun homeCard(card:MusicHomeCard)=action { repository.selectHomeCard(card) }
     fun disconnect()=action { repository.disconnect() }
     private fun action(block:suspend ()->Unit) {
         if(_busy.value) return

@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.4.2-screensaver-power"
+        versionCode = 7
+        versionName = "0.4.3-photo-variety"
     }
 
     buildTypes {

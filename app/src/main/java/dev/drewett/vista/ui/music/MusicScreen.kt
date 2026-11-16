@@ -32,6 +32,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -46,6 +47,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -69,12 +71,21 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     val message by model.message.collectAsStateWithLifecycle()
     var playing by remember { mutableStateOf<MusicTrack?>(null) }
     var ambient by remember { mutableStateOf(false) }
+    var hideVideo by remember { mutableStateOf(false) }
+    var musicHome by remember { mutableStateOf(true) }
     val ambientExitFocus=remember { FocusRequester() }
+    val nextTrack=rememberUpdatedState<()->Unit> {
+        val index=state.tracks.indexOfFirst { it.id==playing?.id }
+        if(index>=0 && index<state.tracks.lastIndex) playing=state.tracks[index+1]
+    }
     val trackPlayer=playing?.let { track ->
-        remember(track.id) { movableContentOf<Modifier> { playerModifier -> OfficialYouTubePlayer(track.id,playerModifier) } }
+        remember(track.id) { movableContentOf<Modifier,Boolean> { playerModifier,interactive -> OfficialYouTubePlayer(track.id,playerModifier,interactive,onEnded={ nextTrack.value() }) } }
     }
     LaunchedEffect(ambient) { onAmbientChanged(ambient);if(ambient) runCatching { ambientExitFocus.requestFocus() } }
     DisposableEffect(Unit) { onDispose { onAmbientChanged(false) } }
+    LaunchedEffect(state.playlist,state.tracks) {
+        if(state.tracks.isNotEmpty()) musicHome=false
+    }
     LaunchedEffect(state.authorized) {
         if(!state.authorized) { ambient=false;playing=null }
         else if(state.playlists.isEmpty()) model.refresh()
@@ -83,12 +94,15 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
     if(ambient && playing!=null && trackPlayer!=null) {
         Box(Modifier.fillMaxSize().background(Color.Black)) {
-            MusicAmbientPhotos(Modifier.fillMaxSize()) { ambient=false }
-            Column(Modifier.align(Alignment.BottomEnd).padding(24.dp).width(384.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            MusicAmbientPhotos(Modifier.fillMaxSize().zIndex(if(hideVideo) 1f else -1f)) { ambient=false }
+            Box(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=138.dp)) {
+                trackPlayer(Modifier.width(384.dp).height(216.dp),!hideVideo)
+            }
+            Column(Modifier.align(Alignment.BottomEnd).padding(24.dp).width(384.dp).zIndex(2f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text(playing!!.title,color=Color.White,maxLines=1,overflow=TextOverflow.Ellipsis,
                     modifier=Modifier.fillMaxWidth().background(Color.Black.copy(alpha=0.7f)).padding(8.dp),style=MaterialTheme.typography.titleMedium)
-                // The complete official player stays visible; never cover its video, controls or advertising.
-                trackPlayer(Modifier.width(384.dp).height(216.dp))
+                if(!hideVideo) Spacer(Modifier.height(216.dp))
+                Button(onClick={ hideVideo=!hideVideo }) { Text(if(hideVideo) "Show video" else "Hide video") }
                 Button(onClick={ ambient=false },modifier=Modifier.focusRequester(ambientExitFocus)) { Text("Return to music") }
             }
         }
@@ -113,6 +127,20 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
         val status=message ?: state.message
         if(status!=null) Text(status,style=MaterialTheme.typography.bodyMedium)
         if(busy || state.loading) Text("Loading…",style=MaterialTheme.typography.bodyMedium)
+        if(state.authorized && playing==null) {
+            Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                Button(onClick={ musicHome=true;model.refresh() },enabled=!busy) { Text("Home") }
+                Button(onClick={ musicHome=false }) { Text("Library") }
+            }
+            state.homeMessage?.let { Text(it,style=MaterialTheme.typography.bodyMedium) }
+        }
+        if(playing==null && musicHome && state.shelves.isNotEmpty()) {
+            MusicHomeShelves(state.shelves,onClick={ card ->
+                if(card.browseId==null && card.playlistId==null && card.videoId!=null) {
+                    playing=MusicTrack(card.videoId,card.title,card.thumbnail)
+                } else model.homeCard(card)
+            },modifier=Modifier.weight(1f))
+        } else {
         Row(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(18.dp)) {
             LazyColumn(Modifier.width(250.dp).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
                 items(state.playlists,key={ it.id }) { playlist ->
@@ -129,10 +157,10 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
                 if(track!=null) {
                     Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                         Text(track.title,modifier=Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.titleMedium)
-                        Button(onClick={ ambient=true }) { Text("Photos + player") }
+                        Button(onClick={ ambient=true }) { Text("Photo screensaver") }
                         Button(onClick={ playing=null }) { Text("Close player") }
                     }
-                    trackPlayer?.invoke(Modifier.fillMaxWidth().weight(1f))
+                    trackPlayer?.invoke(Modifier.fillMaxWidth().weight(1f),true)
                 } else {
                     Text(state.playlist?.title ?: "Choose a playlist",style=MaterialTheme.typography.titleLarge)
                     LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -147,6 +175,7 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
                     }
                 }
             }
+        }
         }
     }
     }

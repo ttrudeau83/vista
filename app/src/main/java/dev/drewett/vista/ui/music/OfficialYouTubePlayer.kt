@@ -7,6 +7,7 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -17,13 +18,15 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import dev.drewett.vista.data.music.MusicProtocol
 
-/** OS WebView + official IFrame player; no stream extraction, hidden playback or ad filtering. */
+/** OS WebView + official IFrame player; no stream extraction. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier) {
+fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier,interactive:Boolean=true,onEnded:()->Unit={}) {
     require(MusicProtocol.videoId(videoId))
     val context=LocalContext.current
     val lifecycle=LocalLifecycleOwner.current.lifecycle
+    val ended=rememberUpdatedState(onEnded)
+    val handler=remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     val web=remember {
         runCatching { WebView(context).apply {
             settings.javaScriptEnabled=true
@@ -33,6 +36,9 @@ fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier) {
             settings.allowFileAccess=false
             settings.allowContentAccess=false
             settings.mixedContentMode=android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            addJavascriptInterface(object {
+                @android.webkit.JavascriptInterface fun ended() { handler.post { ended.value() } }
+            },"VistaPlayback")
             webViewClient=object:WebViewClient() {
                 override fun shouldOverrideUrlLoading(view:WebView,request:WebResourceRequest):Boolean {
                     // Keep player interactions in this screen; never route them to YouTube TV.
@@ -51,13 +57,17 @@ fun OfficialYouTubePlayer(videoId:String,modifier:Modifier=Modifier) {
             if(event==Lifecycle.Event.ON_RESUME) web.onResume()
         }
         lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer);web.stopLoading();web.loadUrl("about:blank");web.destroy() }
+        onDispose { lifecycle.removeObserver(observer);handler.removeCallbacksAndMessages(null);web.removeJavascriptInterface("VistaPlayback");web.stopLoading();web.loadUrl("about:blank");web.destroy() }
     }
     AndroidView(factory={ web },modifier=modifier,update={ view ->
+        view.isFocusable=interactive
+        view.isFocusableInTouchMode=interactive
+        view.descendantFocusability=if(interactive) android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS else android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        view.importantForAccessibility=if(interactive) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         if(view.tag!=videoId) {
             view.tag=videoId
             val origin="https://${context.packageName}"
-            val html="""<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:black"><div id="player"></div><script>var player;function onYouTubeIframeAPIReady(){player=new YT.Player('player',{width:'100%',height:window.innerHeight,videoId:'$videoId',playerVars:{origin:'$origin',autoplay:1,playsinline:1,controls:1}});}</script><script src="https://www.youtube.com/iframe_api"></script></body></html>"""
+            val html="""<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body style="margin:0;background:black"><div id="player"></div><script>var player;function onYouTubeIframeAPIReady(){player=new YT.Player('player',{width:'100%',height:window.innerHeight,videoId:'$videoId',playerVars:{origin:'$origin',autoplay:1,playsinline:1,controls:1},events:{onStateChange:function(e){if(e.data===0){VistaPlayback.ended();}}}});}</script><script src="https://www.youtube.com/iframe_api"></script></body></html>"""
             // Official API Client Identity requirement for local HTML WebView embeds.
             view.loadDataWithBaseURL(origin,html,"text/html","UTF-8",null)
         }

@@ -51,7 +51,8 @@ class ImmichProvisioningProvider : ContentProvider() {
                 }
                 "musicStatus" -> {
                     val music = dev.drewett.vista.data.music.MusicRepository.get(requireNotNull(context))
-                    Bundle().apply { putBoolean("authorized", music.state.value.authorized); putString("channel", music.state.value.channel?.title); putInt("playlists", music.state.value.playlists.size); putString("message", music.state.value.message); putString("code", music.state.value.pairing?.userCode) }
+                    if(arg=="refresh") music.refreshLibrary()
+                    Bundle().apply { putBoolean("authorized", music.state.value.authorized); putString("channel", music.state.value.channel?.title); putInt("playlists", music.state.value.playlists.size); putInt("homeShelves", music.state.value.shelves.size); putInt("homeCards",music.state.value.shelves.sumOf { it.cards.size }); putString("homeMessage",music.state.value.homeMessage); putString("message", music.state.value.message); putString("code", music.state.value.pairing?.userCode) }
                 }
                 "publishedChannels" -> {
                     val channels = dev.drewett.vista.data.channels.ChannelsRepository(requireNotNull(context))

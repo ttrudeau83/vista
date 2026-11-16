@@ -1,6 +1,8 @@
 package dev.drewett.vista.ui.home
 
 import androidx.compose.foundation.Image
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Box
@@ -28,6 +30,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -48,7 +51,7 @@ import java.util.Locale
 
 enum class VistaTab(val label: String) {
     FOR_YOU("For you"), MOVIES("Movies"), SHOWS("Shows"), SMARTTUBE("SmartTube"),
-    MUSIC("Music"), PHOTOS("Photos"), APPS("Apps"),
+    MUSIC("Music"), PHOTOS("Photos"), FREEPLAY("Freeplay"), APPS("Apps"),
 }
 
 @Composable
@@ -61,6 +64,7 @@ fun VistaTopBar(
     modifier: Modifier = Modifier,
     barFocusRequester: FocusRequester? = null,
     contentFocus: FocusRequester? = null,
+    onActivate: (VistaTab) -> Unit = onSelect,
 ) {
     val colors = MaterialTheme.colorScheme
     val tabFocus = remember { List(VistaTab.entries.size) { FocusRequester() } }
@@ -69,7 +73,7 @@ fun VistaTopBar(
     Box(modifier.fillMaxWidth().height(108.dp).background(Brush.verticalGradient(
         0f to colors.background.copy(alpha = 0.9f), 1f to Color.Transparent))) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 22.dp).focusGroup()
+            Modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 22.dp).focusGroup()
                 .onPreviewKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionDown && contentFocus != null) {
                         runCatching { contentFocus.requestFocus(); true }.getOrDefault(false)
@@ -81,9 +85,13 @@ fun VistaTopBar(
                 .then(if (barFocusRequester != null) Modifier.focusRequester(barFocusRequester) else Modifier)
                 .focusProperties { enter = { tabFocus[selected.ordinal] } }.focusGroup()) {
                 VistaTab.entries.forEach { tab ->
+                    var focused by remember(tab) { mutableStateOf(false) }
+                    val focusScale by animateFloatAsState(if (focused) 1.045f else 1f,
+                        animationSpec = spring(dampingRatio = 0.78f, stiffness = 550f), label = "tabFocus")
                     Surface(
-                        onClick = { onSelect(tab) },
+                        onClick = { onActivate(tab) },
                         modifier = Modifier.fillMaxHeight()
+                            .graphicsLayer { scaleX = focusScale; scaleY = focusScale }
                             .focusRequester(tabFocus[tab.ordinal])
                             .focusProperties {
                                 left = tabFocus[(tab.ordinal - 1).coerceAtLeast(0)]
@@ -99,9 +107,9 @@ fun VistaTopBar(
                                     true
                                 } else false
                             }
-                            .onFocusChanged { if (it.isFocused) onSelect(tab) },
+                            .onFocusChanged { focused = it.isFocused; if (it.isFocused) onSelect(tab) },
                         shape = ClickableSurfaceDefaults.shape(RoundedCornerShape(50)),
-                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
+                        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f, pressedScale = 0.98f),
                         colors = ClickableSurfaceDefaults.colors(
                             containerColor = if (selected == tab) colors.onBackground.copy(alpha = 0.92f) else Color.Transparent,
                             contentColor = if (selected == tab) colors.background else colors.onBackground.copy(alpha = 0.65f),
@@ -111,8 +119,8 @@ fun VistaTopBar(
                             pressedContentColor = colors.background,
                         ),
                     ) {
-                        Box(Modifier.fillMaxHeight().padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-                            Text(tab.label, style = MaterialTheme.typography.titleMedium,
+                        Box(Modifier.fillMaxHeight().padding(horizontal = 10.dp), contentAlignment = Alignment.Center) {
+                            Text(tab.label, style = MaterialTheme.typography.titleSmall,
                                 fontWeight = if (selected == tab) FontWeight.SemiBold else FontWeight.Medium)
                         }
                     }
@@ -131,9 +139,13 @@ fun VistaTopBar(
 @Composable
 private fun BarIcon(icon: Int, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     var focused by remember { mutableStateOf(false) }
+    val focusScale by animateFloatAsState(if (focused) 1.08f else 1f,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 550f), label = "toolbarFocus")
     val colors = MaterialTheme.colorScheme
-    Surface(onClick = onClick, modifier = modifier.size(40.dp).onFocusChanged { focused = it.isFocused },
+    Surface(onClick = onClick, modifier = modifier.size(40.dp)
+        .graphicsLayer { scaleX = focusScale; scaleY = focusScale }.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(CircleShape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f, pressedScale = 0.96f),
         colors = ClickableSurfaceDefaults.colors(containerColor = colors.onBackground.copy(alpha = 0.12f),
             focusedContainerColor = colors.primary)) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

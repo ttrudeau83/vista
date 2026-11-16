@@ -429,7 +429,7 @@ class ImmichRepository private constructor(context: Context) {
                         directory.listFiles().orEmpty().filter {
                             it.name.startsWith("bootstrap-") && it != file &&
                                 currentId?.let { current -> it == bootstrapFor(snapshot.namespace, current) } != true
-                        }.sortedByDescending { it.lastModified() }.drop(11).forEach(::deleteFileLocked)
+                        }.sortedByDescending { it.lastModified() }.drop(PhotoPolicy.DAILY_POOL_SIZE - 1).forEach(::deleteFileLocked)
                         evictLocked(snapshot.namespace,id)
                         _status.value = "Showing a quick preview while the full-size photo downloads."
                         publishLocked()

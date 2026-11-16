@@ -45,3 +45,32 @@ Installed Nuvio publishes Continue Watching only. Trending cannot be honestly
 claimed from that source until Nuvio publishes an additional catalog channel.
 Screensaver selection is never enforced by the application; the one-minute
 timeout is device configuration and the selected system dream remains user-owned.
+
+## 0.4.3: photo variety and menu polish
+
+- Daily photo pool increased from 12 to 60. Originals warm up to 450 MiB;
+  combined originals/previews are bounded to 512 MiB and 120 files. Thumbnails
+  retain their separate 30 MiB limit. Actual count depends on album and file size.
+- Ambient photos alternate subtle zoom in/out and horizontal/vertical pans over
+  20 seconds. Pan distances stay within overscan; clock/weather remain static.
+- Music screensaver has a reversible Hide video / Show video visual cover.
+- Music Home renders unofficial service shelves/mixes, with library fallback.
+  See MUSIC_FRONTEND.md for authorization requirements and limits.
+- Freeplay appears before Apps. Select opens the Google TV deep link advertised
+  by this Onn. Accessibility Home fallback permits the explicit Freeplay visit;
+  a delivered Home key, returning to Vista, or opening another launchable app
+  clears that exception. System UI/keyboard popups do not end the visit.
+  If firmware consumes Home while Freeplay and stock Home share the same
+  activity, window events alone cannot distinguish the two; this path still
+  needs a physical-remote check on the Onn.
+- Top navigation, settings tiles and app/content cards use one modest spring
+  focus animation without changing layout positions or directional navigation.
+- Eufy T8213 camera integration is paused at the user's request until their
+  Home Assistant URL and HACS status are available. See EUFY_DESIGN.md.
+
+Validation for this update: all 64 release unit tests passed. Debug and release
+builds compiled; final release includes the Freeplay routing safeguard. Music
+identity and three owned playlists were confirmed on the device; home shelves
+remain blocked by Google's OAuth HTTP 400 response despite successful broader
+authorization. Camera connection remains paused. No private photos or screenshots
+were exported. Physical remote validation is still required for new UI behavior.

@@ -54,6 +54,7 @@ import androidx.tv.material3.Text
 import dev.drewett.vista.R
 import dev.drewett.vista.data.notifications.NotificationRepository
 import dev.drewett.vista.domain.ThemeMode
+import dev.drewett.vista.ui.components.focusPop
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -264,8 +265,9 @@ private fun Tile(label: String, value: String?, iconRes: Int?, modifier: Modifie
     val content = if (focused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
     Surface(
         onClick = onClick,
-        modifier = modifier.onFocusChanged { focused = it.isFocused },
+        modifier = modifier.focusPop(focusedScale = 1.025f).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(TileShape),
+        scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             focusedContainerColor = MaterialTheme.colorScheme.primary,

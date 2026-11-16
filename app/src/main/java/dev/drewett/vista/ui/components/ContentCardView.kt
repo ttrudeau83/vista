@@ -41,10 +41,10 @@ fun ContentCardView(
     Column(modifier) {
         Surface(
             onClick = onClick,
-            modifier = Modifier.fillMaxWidth().aspectRatio(aspectRatio),
+            modifier = Modifier.focusPop(enabled = !flatFocus).fillMaxWidth().aspectRatio(aspectRatio),
             shape = ClickableSurfaceDefaults.shape(CardShape),
             // flatFocus = no scale (the row slides under a pinned ring); both show the ring border.
-            scale = ClickableSurfaceDefaults.scale(focusedScale = if (flatFocus) 1f else 1.07f),
+            scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
             colors = ClickableSurfaceDefaults.colors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,

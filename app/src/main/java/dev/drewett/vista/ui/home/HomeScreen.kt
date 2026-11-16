@@ -1,7 +1,11 @@
 package dev.drewett.vista.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -15,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,6 +28,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Button
 import androidx.tv.material3.Text
 import dev.drewett.vista.ui.VistaSignals
 import dev.drewett.vista.ui.apps.AppsScreen
@@ -32,6 +38,7 @@ import dev.drewett.vista.ui.calendar.FamilyCalendarPanel
 import dev.drewett.vista.ui.photos.PhotosScreen
 import dev.drewett.vista.ui.content.SearchScreen
 import dev.drewett.vista.ui.music.MusicScreen
+import dev.drewett.vista.service.GoogleTvLaunchSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -66,12 +73,26 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     var searchOpen by remember { mutableStateOf(false) }
     var menuApp by remember { mutableStateOf<dev.drewett.vista.domain.AppEntry?>(null) }
     var musicAmbient by remember { mutableStateOf(false) }
+    var freeplayError by remember { mutableStateOf<String?>(null) }
     val topBarFocus = remember { FocusRequester() }
     val contentFocus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { topBarFocus.requestFocus() } }
     val resetSignal by VistaSignals.reset.collectAsStateWithLifecycle()
     val refreshSignal by VistaSignals.refresh.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val freeplayIntent = remember(context) {
+        Intent(Intent.ACTION_VIEW, Uri.parse("https://tv.google.com/freeplay/"))
+            .setPackage("com.google.android.apps.tv.launcherx").addCategory(Intent.CATEGORY_BROWSABLE)
+    }
+    val freeplayAvailable = remember(loaded) { freeplayIntent.resolveActivity(context.packageManager) != null }
+    fun openFreeplay() {
+        if (!freeplayAvailable) return
+        GoogleTvLaunchSession.beginFreeplay()
+        runCatching { context.startActivity(freeplayIntent) }.onFailure {
+            GoogleTvLaunchSession.finish()
+            freeplayError = "Freeplay could not open. Check that Google TV is enabled and up to date."
+        }
+    }
 
     LaunchedEffect(refreshSignal) {
         viewModel.refresh()
@@ -87,7 +108,10 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     }
     DisposableEffect(lifecycleOwner, viewModel) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.refresh()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                GoogleTvLaunchSession.finish()
+                viewModel.refresh()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -129,6 +153,17 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
             )
             VistaTab.PHOTOS -> PhotosScreen(photo = photo, contentFocus = contentFocus)
             VistaTab.MUSIC -> MusicScreen(contentFocus = contentFocus, onAmbientChanged = { musicAmbient = it })
+            VistaTab.FREEPLAY -> Box(Modifier.fillMaxSize().padding(horizontal = 64.dp), contentAlignment = Alignment.CenterStart) {
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Text("Google TV Freeplay", style = MaterialTheme.typography.headlineLarge)
+                    Text(freeplayError ?: if (freeplayAvailable) "Free live channels and more from Google TV."
+                        else "Freeplay is unavailable on this device. Enable or update Google TV to use it.",
+                        style = MaterialTheme.typography.bodyLarge)
+                    if (freeplayAvailable) Button(onClick = ::openFreeplay, modifier = Modifier.focusRequester(contentFocus)) {
+                        Text("Open Freeplay")
+                    }
+                }
+            }
             VistaTab.SMARTTUBE -> if (!loaded) Loading() else if (smartTubeSections.isEmpty()) {
                 EmptyContent("SmartTube has not published any accessible TV channels. Open SmartTube from Apps to configure its channels.")
             } else HomeTab(
@@ -147,6 +182,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
         if (!musicAmbient) VistaTopBar(
             selected = tab,
             onSelect = { tab = it },
+            onActivate = { tab = it; if (it == VistaTab.FREEPLAY) openFreeplay() },
             onOpenQuickSettings = onOpenQuickSettings,
             onOpenSearch = { searchOpen = true },
             modifier = Modifier.align(Alignment.TopStart),

@@ -8,6 +8,14 @@ import dev.drewett.vista.QuickSettingsActivity
 import dev.drewett.vista.MainActivity
 import android.os.SystemClock
 
+/** A user-requested Freeplay visit may use the stock Home activity internally. */
+object GoogleTvLaunchSession {
+    @Volatile var freeplayActive: Boolean = false
+        private set
+    fun beginFreeplay() { freeplayActive = true }
+    fun finish() { freeplayActive = false }
+}
+
 /**
  * Explicitly enabled Home redirection and remote Settings handling. Does not read window contents.
  */
@@ -22,9 +30,20 @@ class VistaAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && GoogleTvLaunchSession.freeplayActive) {
+            val target = event.packageName?.toString()
+            // A separate launched app ends the visit. Ignore System UI/IME popups, which
+            // have no launcher entry and may appear above Freeplay without leaving it.
+            if (target != null && target != packageName && target != "com.google.android.apps.tv.launcherx" &&
+                (packageManager.getLeanbackLaunchIntentForPackage(target) != null ||
+                    packageManager.getLaunchIntentForPackage(target) != null)) {
+                GoogleTvLaunchSession.finish()
+            }
+        }
         // Firmware may reserve HOME before dispatching it to key filters. Redirect only the
         // OS-resolved Home activity, never its settings, search, or other applications.
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            !GoogleTvLaunchSession.freeplayActive &&
             event.packageName?.toString() == firmwareHome?.packageName &&
             event.className?.toString() == firmwareHome?.className) {
             openHome()
@@ -34,6 +53,7 @@ class VistaAccessibilityService : AccessibilityService() {
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.keyCode == KeyEvent.KEYCODE_HOME) {
+            GoogleTvLaunchSession.finish()
             if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) openHome()
             return true
         }

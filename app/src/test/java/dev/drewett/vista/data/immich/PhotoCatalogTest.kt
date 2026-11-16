@@ -12,7 +12,7 @@ class PhotoCatalogTest {
         val assets = (0 until 100).map { PhotoAsset("photo-$it") }
         val day = LocalDate.of(2026, 11, 16)
         val today = PhotoPolicy.dailyPool(assets,day)
-        assertEquals(12,today.size)
+        assertEquals(60,today.size)
         assertEquals(today,PhotoPolicy.dailyPool(assets.reversed(),day))
         assertNotEquals(today,PhotoPolicy.dailyPool(assets,day.plusDays(1)))
     }
@@ -57,13 +57,13 @@ class PhotoCatalogTest {
             LocalDate.of(2026, 11, 15)).map { it.id })
     }
 
-    @Test fun twelveCachedPhotosNavigateWithoutSelectingAnUncachedAssetOrRepeatingImmediately() {
-        val cached = (0 until 12).map { index ->
+    @Test fun sixtyCachedPhotosNavigateWithoutSelectingAnUncachedAssetOrRepeatingImmediately() {
+        val cached = (0 until 60).map { index ->
             PhotoAsset("cached-$index", cachedFile = temporary.newFile("$index.image").apply { writeText("cached") })
         }
         val uncached = PhotoAsset("uncached", cachedFile = File(temporary.root, "not-downloaded"))
         var previous: String? = null
-        repeat(50) { index ->
+        repeat(200) { index ->
             val next = PhotoPolicy.cachedNext(cached + uncached, previous, index - 25)
             assertNotNull(next)
             assertNotEquals("uncached", next!!.id)
@@ -83,16 +83,28 @@ class PhotoCatalogTest {
         assertEquals(PhotoQuality.PREVIEW, preview.quality)
     }
 
-    @Test fun lruKeepsAtLeastTwelveNormalPhotosInsideTheDiskBudget() {
-        val twelve = (0 until 12).map { CachedPhotoEntry("photo-$it", 12L * 1024 * 1024, it.toLong()) }
-        assertTrue(PhotoCachePolicy.evictionKeys(twelve, emptySet()).isEmpty())
+    @Test fun lruKeepsSixtyTypicalPhotosInsideTheDiskBudget() {
+        val sixty = (0 until 60).map { CachedPhotoEntry("photo-$it", 6L * 1024 * 1024, it.toLong()) }
+        assertTrue(PhotoCachePolicy.evictionKeys(sixty, emptySet()).isEmpty())
     }
 
     @Test fun lruEvictsOldestFilesUntilBudgetIsMetButProtectsDisplayedPhoto() {
         val files = (0 until 8).map { CachedPhotoEntry("photo-$it", 40L * 1024 * 1024, it.toLong()) }
-        val evicted = PhotoCachePolicy.evictionKeys(files, setOf("photo-0", "photo-7"))
+        val evicted = PhotoCachePolicy.evictionKeys(files, setOf("photo-0", "photo-7"), maxBytes = 200L * 1024 * 1024)
         assertEquals(setOf("photo-1", "photo-2", "photo-3"), evicted)
         assertEquals(200L * 1024 * 1024, files.filter { it.key !in evicted }.sumOf { it.bytes })
+    }
+
+    @Test fun fullDailyPoolStopsWarmingButStillUpgradesTheDisplayedPreview() {
+        val originals = (0 until 60).map { PhotoAsset("full-$it", cachedFile = temporary.newFile("full-$it")) }
+        val preview = PhotoAsset("preview", cachedFile = temporary.newFile("preview"), quality = PhotoQuality.PREVIEW)
+        assertTrue(PhotoPolicy.prefetchCandidates(originals + preview, emptySet(), SlideshowMode.RANDOM, null).isEmpty())
+        assertEquals(listOf(preview), PhotoPolicy.prefetchCandidates(originals + preview, emptySet(), SlideshowMode.RANDOM, preview.id))
+    }
+
+    @Test fun cacheFileLimitLeavesRoomForDailyOriginalsAndPreviews() {
+        val entries = (0..120).map { CachedPhotoEntry("photo-$it", 1024L, it.toLong()) }
+        assertEquals(setOf("photo-0"), PhotoCachePolicy.evictionKeys(entries, emptySet()))
     }
 
     @Test fun hiddenIdsFilterCachedCandidatesAsWellAsUncachedMetadata() {
