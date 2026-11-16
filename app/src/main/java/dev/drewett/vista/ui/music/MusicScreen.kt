@@ -111,7 +111,7 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
         Row(horizontalArrangement=Arrangement.spacedBy(18.dp)) {
             Column(Modifier.weight(1f)) {
                 Text("Music",style=MaterialTheme.typography.headlineMedium)
-                Text(state.channel?.let { "YouTube · ${it.title}" } ?: "Connect Blanktarget Records",style=MaterialTheme.typography.bodyLarge)
+                Text(if(state.browserConnected) "YouTube Music · ${state.browserProfile.orEmpty()}" else state.channel?.let { "YouTube · ${it.title}" } ?: "Connect Blanktarget Records",style=MaterialTheme.typography.bodyLarge)
             }
             Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) },modifier=Modifier.focusRequester(contentFocus)) { Text("Music settings") }
             if(state.authorized) Button(onClick=model::refresh,enabled=!busy) { Text("Refresh library") }
@@ -221,6 +221,8 @@ fun MusicSettingsScreen(onDone:()->Unit,model:MusicViewModel=viewModel()) {
             }
         }
         item { Text("Enable YouTube Data API v3 in your Google Cloud project. Create an OAuth client of type TVs and Limited Input devices, then enter its client ID and secret here. These are app credentials, not your Google password.",style=MaterialTheme.typography.bodyLarge) }
+        item { Text(if(state.browserConnected) "Music home connected · ${state.browserProfile.orEmpty()}" else "Music home and mixes need a one-time browser connection from your computer.",style=MaterialTheme.typography.titleMedium) }
+        if(state.browserConnected) item { Button(onClick=model::disconnectBrowser,enabled=!busy) { Text("Disconnect Music home") } }
         item { MusicField("OAuth TV client ID",clientId,{clientId=it}) }
         item { MusicField("OAuth client secret",secret,{secret=it},password=true) }
         item { Button(onClick={ model.saveClient(clientId,secret);secret="" },enabled=!busy && clientId.isNotBlank() && secret.isNotBlank()) { Text("Save OAuth client") } }

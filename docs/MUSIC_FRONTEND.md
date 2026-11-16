@@ -19,8 +19,8 @@ channel returned by Google rather than assuming the requested profile.
 The existing connection is retained until a replacement token is accepted;
 cancelling or expiry preserves playlists. A broader `youtube` authorization was
 explicitly approved during testing, but Music still returned HTTP 400. Repeating
-device sign-in does not resolve this. Browser-session authentication is the next
-required integration step and has not been provisioned.
+device sign-in does not resolve this. The separate browser connection below supplies Music authentication without
+replacing the owned-playlist OAuth connection.
 ## Unofficial Music home
 
 User approved use of the undocumented Music `browse` and `next` endpoints on
@@ -59,6 +59,41 @@ References:
 - https://developers.google.com/youtube/v3/docs
 - https://developers.google.com/youtube/iframe_api_reference
 - https://developers.google.com/youtube/terms/developer-policies
-Music home/mixes are implemented but unavailable with the current OAuth connection;
-no claim of successful personalized shelf retrieval is made. Upstream issue:
+Device OAuth alone remains unsuitable for Music home/mixes. Upstream issue:
 https://github.com/sigma67/ytmusicapi/issues/921
+
+## Browser connection (0.4.4)
+
+Run `scripts/Connect-MusicBrowser.ps1` under PowerShell 7 with the temporary
+diagnostic APK installed and the Onn paired over ADB. The helper listens only on
+127.0.0.1 with a random port and one-time route, a 20-minute expiry, same-origin
+POST enforcement, bounded input and no request-body logging or host session file.
+The helper page explains copying signed-in Music Request headers. Never paste
+those into chat, command arguments, tracked files or a public site.
+
+Headers travel through ADB stdin to a private bounded import on the TV. The
+shell-only debug provider consumes/deletes it; the helper also cleans up on
+failure. The parser keeps only required session headers, replaces the captured
+authorization with a fresh SAPISIDHASH for every request, and accepts only the
+Music origin. Cookies never go to OAuth, Data API, images or arbitrary URLs.
+
+The app verifies the active account name against the previously connected
+channel and requires usable home shelves before atomically encrypting the new
+session. Failed imports preserve the previous connection. The real browser
+profile appears in Music and settings; disconnect removes it independently of
+owned playlists. An expired OAuth token does not disable browser home access.
+
+Finish by installing the release APK, which has no provisioning provider and
+cannot be accessed with `run-as`. The existing session survives the upgrade.
+Browser sign-out/session expiry can require repeating this one-time setup.
+Backend authentication does not sign the embedded video player into Premium.
+
+Validation: 72 release unit tests pass, including raw/JSON/wrapped header parsing,
+hash vectors, injection/origin rejection, old vault compatibility, redaction and
+profile checks. The loopback helper returns 400 for cross-origin input; dummy
+same-origin input is rejected and its private TV import is removed. Live Music
+verification follows the user's local submission.
+Mix routing also handles watchPlaylistEndpoint, VL playlist IDs, seed videos and
+thumbnail overlays. Queue parsing skips unavailable tracks and video counterparts.
+Only the initial returned queue batch is loaded; queue continuation is not yet
+implemented. Live verification and release installation await local browser import.

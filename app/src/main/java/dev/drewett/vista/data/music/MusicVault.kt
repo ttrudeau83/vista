@@ -18,7 +18,8 @@ internal class MusicCredentials(val clientId: String, val clientSecret: String,
     var refreshToken: String = "", var accessToken: String = "", var expiresAt: Long = 0,
     var channelId: String = "", var channelTitle: String = "",
     var pendingDeviceCode: String = "", var pendingUserCode: String = "", var pendingVerificationUrl: String = "",
-    var pendingExpiresAt: Long = 0, var pendingInterval: Long = 5) {
+    var pendingExpiresAt: Long = 0, var pendingInterval: Long = 5,
+    var browserSession:MusicBrowserSession? = null, var browserProfile:String = "") {
     override fun toString() = "MusicCredentials(redacted)"
     fun pendingPairing(now: Long = System.currentTimeMillis()): MusicPairing? =
         if (pendingDeviceCode.isNotBlank() && pendingUserCode.isNotBlank() && pendingVerificationUrl.startsWith("https://") && pendingExpiresAt > now)
@@ -29,10 +30,12 @@ internal class MusicCredentials(val clientId: String, val clientSecret: String,
         .put("channelId",channelId).put("channelTitle",channelTitle)
         .put("pendingDeviceCode",pendingDeviceCode).put("pendingUserCode",pendingUserCode)
         .put("pendingVerificationUrl",pendingVerificationUrl).put("pendingExpiresAt",pendingExpiresAt).put("pendingInterval",pendingInterval)
+        .put("browserSession",browserSession?.toJson()).put("browserProfile",browserProfile)
     companion object {
         fun fromJson(json: JSONObject) = MusicCredentials(json.getString("clientId"),json.getString("clientSecret"),
             json.optString("refreshToken"),json.optString("accessToken"),json.optLong("expiresAt"),json.optString("channelId"),json.optString("channelTitle"),
-            json.optString("pendingDeviceCode"),json.optString("pendingUserCode"),json.optString("pendingVerificationUrl"),json.optLong("pendingExpiresAt"),json.optLong("pendingInterval",5).coerceIn(5,120))
+            json.optString("pendingDeviceCode"),json.optString("pendingUserCode"),json.optString("pendingVerificationUrl"),json.optLong("pendingExpiresAt"),json.optLong("pendingInterval",5).coerceIn(5,120),
+            json.optJSONObject("browserSession")?.let { runCatching { MusicBrowserSession.fromJson(it) }.getOrNull() },json.optString("browserProfile"))
     }
 }
 

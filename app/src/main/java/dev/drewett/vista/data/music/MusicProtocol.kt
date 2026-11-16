@@ -19,6 +19,8 @@ data class MusicState(
     val tracks: List<MusicTrack> = emptyList(),
     val shelves: List<MusicShelf> = emptyList(),
     val homeMessage: String? = null,
+    val browserConnected:Boolean = false,
+    val browserProfile:String? = null,
     val pairing: MusicPairing? = null,
     val message: String? = null,
 )

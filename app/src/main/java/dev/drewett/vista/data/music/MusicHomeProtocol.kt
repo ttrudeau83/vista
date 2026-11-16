@@ -5,6 +5,18 @@ import org.json.JSONObject
 
 /** Tolerates optional/unknown web renderers; never interprets arbitrary URLs as playback. */
 object MusicHomeProtocol {
+    /** A VL browse ID wraps a playlist; mixes must enter the playback queue, not artist browsing. */
+    fun destination(card:MusicHomeCard):Pair<String,JSONObject> {
+        val playlist=card.playlistId ?: card.browseId?.takeIf { it.startsWith("VL") }?.removePrefix("VL")?.takeIf(MusicProtocol::resourceId)
+        if(playlist!=null || card.videoId!=null) {
+            val body=JSONObject().put("enablePersistentPlaylistPanel",true).put("isAudioOnly",true).put("tunerSettingValue","AUTOMIX_SETTING_NORMAL")
+            playlist?.let { body.put("playlistId",it) }
+            card.videoId?.let { body.put("videoId",it) }
+            return "next" to body
+        }
+        require(card.browseId!=null) { "No Music destination." }
+        return "browse" to JSONObject().put("browseId",card.browseId)
+    }
     fun continuation(json:JSONObject):String? = nodes(json).mapNotNull {
         val section=it.optJSONObject("sectionListRenderer") ?: it.optJSONObject("sectionListContinuation") ?: return@mapNotNull null
         section.optJSONArray("continuations")?.optJSONObject(0)?.optJSONObject("nextContinuationData")?.optString("continuation")
@@ -13,15 +25,18 @@ object MusicHomeProtocol {
     fun shelves(json:JSONObject):List<MusicShelf> = nodes(json).mapNotNull { node ->
         val shelf=node.optJSONObject("musicCarouselShelfRenderer") ?: node.optJSONObject("musicShelfRenderer") ?: return@mapNotNull null
         val header=shelf.optJSONObject("header")
-        val title=header?.let { nodes(it).mapNotNull { n -> n.optJSONObject("title")?.let(::text)?.takeIf(String::isNotBlank) }.firstOrNull() }
+        val title=header?.let { nodes(it).mapNotNull { n -> sequenceOf(n.optJSONObject("title"),n.optJSONObject("strapline"))
+            .mapNotNull { value -> value?.let(::text)?.takeIf(String::isNotBlank) }.firstOrNull() }.firstOrNull() }
             ?: shelf.optJSONObject("title")?.let(::text) ?: return@mapNotNull null
         val cards=nodes(shelf.optJSONArray("contents")).mapNotNull(::card).distinctBy { listOf(it.browseId,it.playlistId,it.videoId) }.take(30).toList()
         cards.takeIf { it.isNotEmpty() }?.let { MusicShelf(title.take(200),it) }
     }.distinctBy { it.title }.take(16).toList()
 
-    fun tracks(json:JSONObject):List<MusicTrack> = nodes(json).mapNotNull { node ->
+    fun tracks(json:JSONObject):List<MusicTrack> = nodes(json,skipCounterparts=true).mapNotNull { node ->
         val renderer=node.optJSONObject("playlistPanelVideoRenderer") ?: node.optJSONObject("musicResponsiveListItemRenderer") ?: return@mapNotNull null
+        if(renderer.has("unplayableText") || (renderer.has("isPlayable") && !renderer.optBoolean("isPlayable"))) return@mapNotNull null
         val id=renderer.optString("videoId").ifBlank { renderer.optJSONObject("playlistItemData")?.optString("videoId").orEmpty() }
+            .ifBlank { firstColumnEndpoint(renderer)?.optJSONObject("watchEndpoint")?.optString("videoId").orEmpty() }
         if(!MusicProtocol.videoId(id)) return@mapNotNull null
         val title=renderer.optJSONObject("title")?.let(::text) ?: flexText(renderer)
         if(title.isBlank()) null else MusicTrack(id,title.take(200),thumbnail(renderer))
@@ -32,7 +47,10 @@ object MusicHomeProtocol {
         val title=renderer.optJSONObject("title")?.let(::text) ?: flexText(renderer)
         if(title.isBlank()) return null
         val endpoint=renderer.optJSONObject("navigationEndpoint") ?: nodes(renderer.optJSONObject("title")).mapNotNull { it.optJSONObject("navigationEndpoint") }.firstOrNull()
-        val watch=endpoint?.optJSONObject("watchEndpoint") ?: nodes(renderer.optJSONObject("overlay")).mapNotNull { it.optJSONObject("watchEndpoint") }.firstOrNull()
+            ?: firstColumnEndpoint(renderer)
+        val watch=endpoint?.optJSONObject("watchEndpoint") ?: endpoint?.optJSONObject("watchPlaylistEndpoint")
+            ?: sequenceOf(renderer.optJSONObject("overlay"),renderer.optJSONObject("thumbnailOverlay")).flatMap { nodes(it) }
+                .mapNotNull { it.optJSONObject("watchEndpoint") ?: it.optJSONObject("watchPlaylistEndpoint") }.firstOrNull()
         val browse=endpoint?.optJSONObject("browseEndpoint")?.optString("browseId")?.takeIf(MusicProtocol::resourceId)
         val playlist=watch?.optString("playlistId")?.takeIf(MusicProtocol::resourceId)
         val video=watch?.optString("videoId")?.takeIf(MusicProtocol::videoId)
@@ -42,17 +60,19 @@ object MusicHomeProtocol {
     }
     private fun flexText(renderer:JSONObject):String = renderer.optJSONArray("flexColumns")?.optJSONObject(0)
         ?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")?.optJSONObject("text")?.let(::text).orEmpty()
+    private fun firstColumnEndpoint(renderer:JSONObject):JSONObject? = nodes(renderer.optJSONArray("flexColumns")?.optJSONObject(0))
+        .mapNotNull { it.optJSONObject("navigationEndpoint") }.firstOrNull()
     private fun text(value:JSONObject):String = value.optString("simpleText").ifBlank {
         val runs=value.optJSONArray("runs") ?: return@ifBlank ""
         (0 until runs.length()).joinToString("") { runs.optJSONObject(it)?.optString("text").orEmpty() }
     }
     private fun thumbnail(value:JSONObject):String? = nodes(value.optJSONObject("thumbnail") ?: value.optJSONObject("thumbnailRenderer"))
         .mapNotNull { it.optString("url").takeIf { url -> url.startsWith("https://") && url.length<=2048 } }.lastOrNull()
-    private fun nodes(value:Any?,depth:Int=0):Sequence<JSONObject> = sequence {
+    private fun nodes(value:Any?,depth:Int=0,skipCounterparts:Boolean=false):Sequence<JSONObject> = sequence {
         if(depth>40) return@sequence
         when(value) {
-            is JSONObject -> { yield(value); for(key in value.keys()) yieldAll(nodes(value.opt(key),depth+1)) }
-            is JSONArray -> for(index in 0 until value.length()) yieldAll(nodes(value.opt(index),depth+1))
+            is JSONObject -> { yield(value); for(key in value.keys()) if(!skipCounterparts || key!="counterpart") yieldAll(nodes(value.opt(key),depth+1,skipCounterparts)) }
+            is JSONArray -> for(index in 0 until value.length()) yieldAll(nodes(value.opt(index),depth+1,skipCounterparts))
         }
     }
 }

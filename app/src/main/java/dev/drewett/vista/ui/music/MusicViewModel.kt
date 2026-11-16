@@ -26,6 +26,7 @@ class MusicViewModel(app:Application):AndroidViewModel(app) {
     fun playlist(playlist:MusicPlaylist)=action { repository.selectPlaylist(playlist) }
     fun homeCard(card:MusicHomeCard)=action { repository.selectHomeCard(card) }
     fun disconnect()=action { repository.disconnect() }
+    fun disconnectBrowser()=action { repository.disconnectBrowserSession() }
     private fun action(block:suspend ()->Unit) {
         if(_busy.value) return
         _busy.value=true; _message.value=null

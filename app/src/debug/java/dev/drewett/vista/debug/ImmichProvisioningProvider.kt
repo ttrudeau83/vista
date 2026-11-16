@@ -54,6 +54,34 @@ class ImmichProvisioningProvider : ContentProvider() {
                     if(arg=="refresh") music.refreshLibrary()
                     Bundle().apply { putBoolean("authorized", music.state.value.authorized); putString("channel", music.state.value.channel?.title); putInt("playlists", music.state.value.playlists.size); putInt("homeShelves", music.state.value.shelves.size); putInt("homeCards",music.state.value.shelves.sumOf { it.cards.size }); putString("homeMessage",music.state.value.homeMessage); putString("message", music.state.value.message); putString("code", music.state.value.pairing?.userCode) }
                 }
+                "musicBrowser" -> {
+                    val appContext=requireNotNull(context)
+                    val file=java.io.File(appContext.filesDir,"music-browser-import.txt")
+                    try {
+                        require(file.isFile && file.length() in 1..32768) { "A bounded browser header import is required." }
+                        val music=dev.drewett.vista.data.music.MusicRepository.get(appContext)
+                        music.configureBrowserSession(file.readText(Charsets.UTF_8))
+                        Bundle().apply {
+                            putBoolean("browserConnected",music.state.value.browserConnected)
+                            putString("browserProfile",music.state.value.browserProfile)
+                            putInt("homeShelves",music.state.value.shelves.size)
+                            putInt("homeCards",music.state.value.shelves.sumOf { it.cards.size })
+                        }
+                    } catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled }
+                    catch(_:Exception) {
+                        // JSON/parser exceptions may quote input. Never pass them to Binder/logcat.
+                        Bundle().apply { putBoolean("browserConnected",false);putString("status","Browser session could not be verified.") }
+                    } finally { file.delete() }
+                }
+                "musicVerifyMix" -> {
+                    val music=dev.drewett.vista.data.music.MusicRepository.get(requireNotNull(context))
+                    music.refreshLibrary()
+                    val mix=music.state.value.shelves.flatMap { it.cards }.firstOrNull {
+                        it.playlistId?.startsWith("RD")==true || it.browseId?.startsWith("VLRD")==true
+                    }
+                    if(mix!=null) music.selectHomeCard(mix)
+                    Bundle().apply { putBoolean("mixFound",mix!=null);putInt("trackCount",if(mix!=null) music.state.value.tracks.size else 0) }
+                }
                 "publishedChannels" -> {
                     val channels = dev.drewett.vista.data.channels.ChannelsRepository(requireNotNull(context))
                         .loadPreviewPrograms().groupBy { it.packageName to it.channelName }

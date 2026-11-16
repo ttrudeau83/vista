@@ -42,7 +42,8 @@ class MusicRepository private constructor(context: Context) {
             mutex.withLock {
                 credentials = try { vault.read() } catch (_: Exception) { null }
                 val value = credentials
-                _state.value = MusicState(loading=false,clientConfigured=value != null,authorized=value?.let { it.refreshToken.isNotEmpty() || it.accessToken.isNotEmpty() } == true,
+                _state.value = MusicState(loading=false,clientConfigured=value != null,authorized=value?.let { it.refreshToken.isNotEmpty() || it.accessToken.isNotEmpty() || it.browserSession!=null } == true,
+                    browserConnected=value?.browserSession!=null,browserProfile=value?.browserProfile?.takeIf(String::isNotBlank),
                     channel=value?.takeIf { MusicProtocol.resourceId(it.channelId) }?.let { MusicChannel(it.channelId,it.channelTitle) })
                 if(value != null && value.pendingPairing()!=null) {
                     _state.value=_state.value.copy(pairing=value.pendingPairing(),message="Resuming Google authorization for this code.")
@@ -140,7 +141,38 @@ class MusicRepository private constructor(context: Context) {
             _state.value = _state.value.copy(channels=channels,channel=selected,playlist=null,tracks=emptyList())
             if (selected != null) { loadPlaylists(value,selected); loadHome(value) }
             else _state.value = _state.value.copy(playlists=emptyList(),message=if (channels.isEmpty()) "No YouTube channel is available for this account." else "Choose your authorized channel.")
+        } catch(cancelled:CancellationException) { throw cancelled }
+        catch(error:Exception) {
+            if(value.browserSession==null) throw error
+            loadHome(value)
+            _state.value=_state.value.copy(message="The Music browser connection is available; reconnect Google to refresh owned playlists.")
         } finally { _state.value = _state.value.copy(loading=false) }
+    }
+
+    /** Validate privately first. A failed import never overwrites a working session. */
+    suspend fun configureBrowserSession(raw:String) = io {
+        val value=credentials ?: throw IllegalStateException("Configure Music first.")
+        val candidate=MusicBrowserSession.parse(raw)
+        val profile=MusicBrowserSession.profile(musicApi(value,"account/account_menu",JSONObject(),candidate))
+            ?: throw IllegalStateException("Music did not verify a signed-in browser profile. Copy a new signed-in request.")
+        require(MusicBrowserSession.matchesChannel(profile,value.channelTitle)) {
+            "Switch to the connected channel in YouTube Music, then copy a new signed-in request. The previous connection was kept."
+        }
+        val shelves=MusicHomeProtocol.shelves(musicApi(value,"browse",JSONObject().put("browseId","FEmusic_home"),candidate))
+        require(shelves.isNotEmpty()) { "Music did not return usable home categories. The previous connection was kept." }
+        val previous=value.browserSession;val previousProfile=value.browserProfile
+        value.browserSession=candidate;value.browserProfile=profile
+        try { vault.write(value) } catch(error:Exception) { value.browserSession=previous;value.browserProfile=previousProfile;throw error }
+        _state.value=_state.value.copy(authorized=true,browserConnected=true,browserProfile=profile,shelves=shelves,homeMessage=null,message="Music browser connected.",playlist=null,tracks=emptyList())
+    }
+
+    suspend fun disconnectBrowserSession() = io {
+        credentials?.let { value ->
+            val previous=value.browserSession;val profile=value.browserProfile
+            value.browserSession=null;value.browserProfile=""
+            try { vault.write(value) } catch(error:Exception) { value.browserSession=previous;value.browserProfile=profile;throw error }
+            _state.value=_state.value.copy(browserConnected=false,browserProfile=null,shelves=emptyList(),playlist=null,tracks=emptyList(),homeMessage="Music browser disconnected.",authorized=value.refreshToken.isNotBlank() || value.accessToken.isNotBlank())
+        }
     }
 
     suspend fun selectChannel(channel: MusicChannel) = io {
@@ -173,12 +205,8 @@ class MusicRepository private constructor(context: Context) {
     suspend fun selectHomeCard(card:MusicHomeCard) = io {
         val value=requireAuthorized()
         require(state.value.shelves.any { card in it.cards })
-        val response=when {
-            card.playlistId!=null -> musicApi(value,"next",JSONObject().put("playlistId",card.playlistId).put("isAudioOnly",true))
-            card.browseId!=null -> musicApi(value,"browse",JSONObject().put("browseId",card.browseId))
-            card.videoId!=null -> musicApi(value,"next",JSONObject().put("videoId",card.videoId).put("isAudioOnly",true))
-            else -> error("No Music destination.")
-        }
+        val (endpoint,body)=MusicHomeProtocol.destination(card)
+        val response=musicApi(value,endpoint,body)
         val tracks=MusicHomeProtocol.tracks(response)
         val nested=MusicHomeProtocol.shelves(response)
         _state.value=_state.value.copy(playlist=MusicPlaylist(card.playlistId ?: card.browseId ?: card.videoId.orEmpty(),card.title,card.thumbnail,tracks.size),
@@ -223,7 +251,7 @@ class MusicRepository private constructor(context: Context) {
         if(!token.isNullOrBlank()) try { post("https://oauth2.googleapis.com/revoke",mapOf("token" to token)) } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { /* Local tokens are removed even offline. */ }
     }
 
-    private fun requireAuthorized() = credentials?.takeIf { it.refreshToken.isNotBlank() || it.accessToken.isNotBlank() }
+    private fun requireAuthorized() = credentials?.takeIf { it.refreshToken.isNotBlank() || it.accessToken.isNotBlank() || it.browserSession!=null }
         ?: throw IllegalStateException("Connect your Google account first.")
     private suspend fun ensureAccessToken(value:MusicCredentials) {
         if(value.accessToken.isBlank() || value.expiresAt < System.currentTimeMillis()+60_000) {
@@ -239,11 +267,13 @@ class MusicRepository private constructor(context: Context) {
         if(response.has("error")) throw IllegalStateException("YouTube could not load this library. Check API access and sign-in.")
         return response
     }
-    private suspend fun musicApi(value:MusicCredentials,endpoint:String,body:JSONObject):JSONObject {
-        ensureAccessToken(value)
+    private suspend fun musicApi(value:MusicCredentials,endpoint:String,body:JSONObject,browserOverride:MusicBrowserSession?=null):JSONObject {
+        require(endpoint in setOf("browse","next","account/account_menu"))
+        val browser=browserOverride ?: value.browserSession
+        if(browser==null) ensureAccessToken(value)
         val version="1."+java.time.LocalDate.now(java.time.ZoneOffset.UTC).format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)+".01.00"
         body.put("context",JSONObject().put("client",JSONObject().put("clientName","WEB_REMIX").put("clientVersion",version).put("hl","en").put("gl","US")).put("user",JSONObject()))
-        val response=request("https://music.youtube.com/youtubei/v1/$endpoint?alt=json&prettyPrint=false",body.toString(),value.accessToken,jsonBody=true)
+        val response=request("https://music.youtube.com/youtubei/v1/$endpoint?alt=json&prettyPrint=false",body.toString(),if(browser==null) value.accessToken else null,jsonBody=true,browser=browser)
         response.optJSONObject("error")?.let {
             throw MusicHomeException(if(it.optInt("code") in listOf(400,401,403)) "Music home needs a browser connection." else "Music home is temporarily unavailable.")
         }
@@ -260,8 +290,9 @@ class MusicRepository private constructor(context: Context) {
         vault.write(value)
     }
     private suspend fun post(url:String,fields:Map<String,String>)=request(url,body=fields.entries.joinToString("&") { encode(it.key)+"="+encode(it.value) })
-    private suspend fun request(url:String,body:String?=null,token:String?=null,jsonBody:Boolean=false):JSONObject {
+    private suspend fun request(url:String,body:String?=null,token:String?=null,jsonBody:Boolean=false,browser:MusicBrowserSession?=null):JSONObject {
         currentCoroutineContext().ensureActive()
+        require(browser==null || (jsonBody && url.startsWith("https://music.youtube.com/youtubei/v1/") && token==null))
         val connection=URL(url).openConnection() as HttpURLConnection
         try {
             connection.instanceFollowRedirects=false; connection.connectTimeout=8_000; connection.readTimeout=10_000; connection.useCaches=false
@@ -273,6 +304,7 @@ class MusicRepository private constructor(context: Context) {
                 connection.setRequestProperty("X-Goog-Request-Time",(System.currentTimeMillis()/1000).toString())
                 connection.setRequestProperty("User-Agent","Mozilla/5.0")
             }
+            browser?.headers()?.forEach { (name,value) -> connection.setRequestProperty(name,value) }
             if(body!=null) {
                 connection.requestMethod="POST"; connection.doOutput=true; connection.setRequestProperty("Content-Type",if(jsonBody) "application/json" else "application/x-www-form-urlencoded")
                 connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
