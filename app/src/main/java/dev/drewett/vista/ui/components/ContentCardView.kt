@@ -116,6 +116,7 @@ fun ContentCardView(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 2,
+            minLines = if(flatFocus) 2 else 1,
             modifier = Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp),
         )
         val meta = card.episodeLabel ?: card.timeLeftLabel

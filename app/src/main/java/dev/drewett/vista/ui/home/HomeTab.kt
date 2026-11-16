@@ -21,6 +21,7 @@ import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
@@ -62,9 +63,12 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.palette.graphics.Palette
@@ -85,7 +89,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 private val CardWidth = 232.dp
-private val ContentImageHeight = 132.dp
+private val ContentImageHeight = 112.dp
 private val IconSize = 104.dp
 private val RowEdgePadding = 48.dp
 private val PanelTopPadding = 24.dp
@@ -99,6 +103,12 @@ private var initialFocusDone = false
 @OptIn(ExperimentalFoundationApi::class)
 private fun leadingSpec(padPx: Float) = object : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = offset - padPx
+}
+
+// Row focus scrolls the whole shelf, including its title, rather than just the image.
+@OptIn(ExperimentalFoundationApi::class)
+private val shelfScrollSpec = object : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
 }
 
 @Composable
@@ -117,20 +127,18 @@ fun HomeTab(
 ) {
     var focused by remember { mutableStateOf<Spotlight?>(null) }
     val heroItem = focused ?: sections.firstOrNull()?.let { firstSpotlightOf(it) }
+    val density = LocalDensity.current
+    var firstShelfHeight by remember(sections.firstOrNull()?.key) {
+        mutableStateOf(if(sections.firstOrNull() is AppSection) 180.dp else 260.dp)
+    }
 
-    Box(modifier.fillMaxSize().vistaBackdrop()) {
+    BoxWithConstraints(modifier.fillMaxSize().vistaBackdrop()) {
         // Immersive full-bleed hero behind everything.
         val photoFile = photo.file
         if (photoFile != null) PhotoBackground(photoFile, photo.fit) else HeroBackground(heroItem)
-        Column(Modifier.fillMaxSize()) {
-            Spacer(Modifier.height(PanelTopPadding))
-            // The hero owns only the remaining space; long app labels cannot move the rows.
-            Box(Modifier.weight(1f).fillMaxWidth().clipToBounds()) {
-                Row(Modifier.fillMaxSize().padding(start = RowEdgePadding, end = 40.dp)) {
-                    HeroInfo(item = heroItem, modifier = Modifier.weight(1f).padding(end = 24.dp))
-                    if (calendarPanel != null) Box(Modifier.width(320.dp)) { calendarPanel() }
-                }
-            }
+        // Start with one complete shelf at the bottom. Down scrolls the hero away,
+        // leaving the previous and selected shelves together in the viewport.
+        val heroHeight = (maxHeight - firstShelfHeight - 56.dp).coerceAtLeast(0.dp)
             SectionsList(
                 sections = sections,
                 onFocus = { focused = it },
@@ -140,9 +148,16 @@ fun HomeTab(
                 topBarFocus = topBarFocus,
                 contentFocus = contentFocus,
                 resetSignal = resetSignal,
-                modifier = Modifier.height(246.dp),
+                modifier = Modifier.fillMaxSize(),
+                heroHeight = heroHeight,
+                onFirstShelfHeight = { height -> firstShelfHeight = with(density) { height.toDp() } },
+                hero = {
+                    Row(Modifier.fillMaxSize().padding(start = RowEdgePadding, end = 40.dp, top = PanelTopPadding)) {
+                        HeroInfo(item = heroItem, modifier = Modifier.weight(1f).padding(end = 24.dp))
+                        if (calendarPanel != null) Box(Modifier.width(320.dp)) { calendarPanel() }
+                    }
+                },
             )
-        }
     }
 }
 
@@ -242,13 +257,21 @@ private fun SectionsList(
     contentFocus: FocusRequester,
     resetSignal: Int,
     modifier: Modifier = Modifier,
+    heroHeight: Dp,
+    onFirstShelfHeight: (Int) -> Unit,
+    hero: @Composable () -> Unit,
 ) {
     val firstItem = contentFocus
     var focusedRow by remember { mutableStateOf<String?>(null) }
+    var focusedSection by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
     val density = androidx.compose.ui.platform.LocalDensity.current
     val rowPadPx = with(density) { RowEdgePadding.toPx() }
-    val colPadPx = with(density) { 4.dp.toPx() }
+
+    LaunchedEffect(focusedSection) {
+        // Item zero is the hero; section N starts at item N + 1.
+        listState.animateScrollToItem(if(focusedSection == 0) 0 else focusedSection)
+    }
 
     var observedReset by remember { mutableStateOf(resetSignal) }
     LaunchedEffect(resetSignal) {
@@ -259,6 +282,7 @@ private fun SectionsList(
         observedReset = resetSignal
     }
 
+    CompositionLocalProvider(LocalBringIntoViewSpec provides shelfScrollSpec) {
     LazyColumn(
         state = listState,
         modifier = modifier
@@ -266,9 +290,10 @@ private fun SectionsList(
             .focusProperties {
                 exit = { direction -> if (direction == FocusDirection.Up || direction == FocusDirection.Left) topBarFocus else FocusRequester.Default }
             },
-        contentPadding = PaddingValues(top = 4.dp, bottom = 56.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
+        item(key = "hero") { Box(Modifier.height(heroHeight).fillMaxWidth().clipToBounds()) { hero() } }
         itemsIndexed(sections, key = { _, s -> s.key }) { sectionIndex, section ->
             val rowFocused = focusedRow == section.key
             val rowAlpha by animateFloatAsState(
@@ -281,8 +306,9 @@ private fun SectionsList(
 
             Column(
                 modifier = Modifier
+                    .onSizeChanged { if(sectionIndex == 0) onFirstShelfHeight(it.height) }
                     .alpha(rowAlpha)
-                    .onFocusChanged { if (it.hasFocus) focusedRow = section.key },
+                    .onFocusChanged { if (it.hasFocus) { focusedRow = section.key; focusedSection = sectionIndex } },
             ) {
                 RowHeader(section)
                 // Anchored scroll keeps the focused card at the leading pivot (ring looks fixed),
@@ -292,7 +318,7 @@ private fun SectionsList(
                             contentPadding = PaddingValues(horizontal = RowEdgePadding),
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             modifier = Modifier
-                                .padding(vertical = 10.dp)
+                                .padding(vertical = 8.dp)
                                 .focusGroup()
                                 .focusProperties {
                                     exit = { dir ->
@@ -336,6 +362,7 @@ private fun SectionsList(
                 }
             }
         }
+    }
     }
 
 @Composable

@@ -117,7 +117,7 @@ class AmbientPhotoView(context: Context, private val allowMusic: Boolean, privat
             val source = WeatherRepository.get(context)
             launch { while (isActive) { source.refresh(); delay(15 * 60_000) } }
             source.state.collectLatest {
-                weather = if (it.temperatureF != null) "${it.city} · ${it.temperatureF}°F · ${it.condition}" else ""
+                weather = if (it.temperatureF != null) listOf("${it.city} · ${it.temperatureF}°F", it.condition).filter(String::isNotBlank).joinToString("\n") else ""
                 updateCorner()
             }
         }

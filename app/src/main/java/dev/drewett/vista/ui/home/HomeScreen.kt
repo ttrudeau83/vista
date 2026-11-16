@@ -79,6 +79,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     val movies by viewModel.movies.collectAsStateWithLifecycle()
     val shows by viewModel.shows.collectAsStateWithLifecycle()
     val allContent by viewModel.allContent.collectAsStateWithLifecycle()
+    val nuvioApp = apps.firstOrNull { it.packageName.contains("nuvio", ignoreCase = true) }
 
     var tab by remember { mutableStateOf(VistaTab.FOR_YOU) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -168,6 +169,13 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                     },
                 )
 
+            VistaTab.NUVIO -> Column(Modifier.fillMaxSize().padding(top=28.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                Text("Nuvio", Modifier.padding(start=48.dp), style=MaterialTheme.typography.headlineMedium)
+                Button(onClick={ nuvioApp?.let(viewModel::launch) }, enabled=nuvioApp!=null,
+                    modifier=Modifier.padding(start=48.dp).focusRequester(contentFocus).railBoundary()) { Text(if(nuvioApp!=null) "Open Nuvio" else "Nuvio is not installed") }
+                ContentGrid("From Nuvio", allContent.filter { it.packageName==nuvioApp?.packageName }, viewModel::launchContent,
+                    modifier=Modifier.weight(1f), emptyMessage="Open Nuvio to browse its catalog.")
+            }
             VistaTab.MOVIES -> ContentGrid("Movies", movies, viewModel::launchContent, contentFocus = contentFocus)
             VistaTab.SHOWS -> ContentGrid("Shows", shows, viewModel::launchContent, contentFocus = contentFocus)
             VistaTab.APPS -> if (!loaded) Loading() else AppsScreen(
@@ -224,6 +232,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 if(chosen!=tab) panelReturnFocus.value=null
                 searchOpen=false;tab=chosen
                 if(chosen==VistaTab.FREEPLAY) openFreeplay() else panelEntry++
+                if(chosen==VistaTab.NUVIO) nuvioApp?.let(viewModel::launch)
             },onSearch={ searchOpen=true },onSettings=onOpenQuickSettings,
             onFocus={ railFocused=it },use24Hour=use24Hour,modifier=Modifier.align(Alignment.CenterStart))
         BackHandler(railFocused && !searchOpen && menuApp==null) { pendingReturnFocus=panelReturnFocus.value;panelEntry++ }

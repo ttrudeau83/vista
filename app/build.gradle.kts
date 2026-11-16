@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 12
-        versionName = "0.4.8-appearance"
+        versionCode = 13
+        versionName = "0.4.9-shelves"
     }
 
     buildTypes {
