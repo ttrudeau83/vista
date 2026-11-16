@@ -82,6 +82,34 @@ class ImmichProvisioningProvider : ContentProvider() {
                     if(mix!=null) music.selectHomeCard(mix)
                     Bundle().apply { putBoolean("mixFound",mix!=null);putInt("trackCount",if(mix!=null) music.state.value.tracks.size else 0) }
                 }
+                "ambientStatus" -> {
+                    repository.loadGallery(refresh=arg=="refresh")
+                    Bundle().apply {
+                        putInt("photos",repository.gallery.value.count { !it.isVideo })
+                        putInt("videos",repository.gallery.value.count { it.isVideo })
+                        putInt("cached",repository.gallery.value.count { it.cachedFile?.isFile==true })
+                    }
+                }
+                "ambientVerifyVideo" -> {
+                    repository.loadGallery()
+                    val asset=repository.gallery.value.firstOrNull { it.isVideo }
+                    val result=Bundle().apply { putBoolean("videoFound",asset!=null) }
+                    if(asset!=null) {
+                        try {
+                            val media=repository.ambientAsset(asset.id) ?: error("Media is still loading")
+                            val player=android.media.MediaPlayer()
+                            try {
+                                player.setVolume(0f,0f)
+                                player.setDataSource(media.file.absolutePath)
+                                player.prepare() // Validate only; never start playback or request audio focus.
+                                result.putBoolean("prepared",true)
+                                result.putInt("width",player.videoWidth);result.putInt("height",player.videoHeight)
+                                result.putInt("durationMs",player.duration)
+                            } finally { player.release() }
+                        } catch(error:Exception) { result.putBoolean("prepared",false);result.putString("failure",error.javaClass.simpleName) }
+                    }
+                    result
+                }
                 "publishedChannels" -> {
                     val channels = dev.drewett.vista.data.channels.ChannelsRepository(requireNotNull(context))
                         .loadPreviewPrograms().groupBy { it.packageName to it.channelName }

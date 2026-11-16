@@ -1,5 +1,7 @@
 package dev.drewett.vista.ui.content
 
+import dev.drewett.vista.ui.theme.vistaBackdrop
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +66,7 @@ fun SearchScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .vistaBackdrop()
             .padding(start = 48.dp, end = 48.dp, top = 64.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {

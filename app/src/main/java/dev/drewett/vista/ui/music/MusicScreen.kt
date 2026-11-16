@@ -2,6 +2,8 @@ package dev.drewett.vista.ui.music
 
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,11 +42,20 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
@@ -54,6 +65,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.tv.material3.Button
+import androidx.tv.material3.ButtonDefaults
 import androidx.tv.material3.LocalContentColor
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
@@ -62,6 +74,8 @@ import coil.compose.AsyncImage
 import dev.drewett.vista.MusicSettingsActivity
 import dev.drewett.vista.data.music.MusicTrack
 import dev.drewett.vista.ui.photos.AmbientPhotoView
+import dev.drewett.vista.ui.theme.vistaBackdrop
+import kotlinx.coroutines.delay
 
 @Composable
 fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},model:MusicViewModel=viewModel()) {
@@ -73,6 +87,10 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     var ambient by remember { mutableStateOf(false) }
     var hideVideo by remember { mutableStateOf(false) }
     var musicHome by remember { mutableStateOf(true) }
+    var overlayAwake by remember { mutableStateOf(true) }
+    var overlayInteraction by remember { mutableStateOf(0) }
+    var revealRelease by remember { mutableStateOf(false) }
+    val overlayAlpha by animateFloatAsState(if(overlayAwake) 1f else 0.16f,tween(650),label="music overlay")
     val ambientExitFocus=remember { FocusRequester() }
     val nextTrack=rememberUpdatedState<()->Unit> {
         val index=state.tracks.indexOfFirst { it.id==playing?.id }
@@ -83,6 +101,10 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     }
     LaunchedEffect(ambient) { onAmbientChanged(ambient);if(ambient) runCatching { ambientExitFocus.requestFocus() } }
     DisposableEffect(Unit) { onDispose { onAmbientChanged(false) } }
+    LaunchedEffect(ambient,overlayInteraction) {
+        overlayAwake=true
+        if(ambient) { delay(4000);overlayAwake=false }
+    }
     LaunchedEffect(state.playlist,state.tracks) {
         if(state.tracks.isNotEmpty()) musicHome=false
     }
@@ -93,17 +115,28 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     BackHandler(enabled=playing!=null) { if(ambient) ambient=false else playing=null }
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
     if(ambient && playing!=null && trackPlayer!=null) {
-        Box(Modifier.fillMaxSize().background(Color.Black)) {
+        Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { event ->
+            val select=event.key==Key.DirectionCenter || event.key==Key.Enter || event.key==Key.NumPadEnter
+            if(event.type==KeyEventType.KeyUp && select && revealRelease) { revealRelease=false;true }
+            else if(event.type==KeyEventType.KeyDown) {
+                val wasFaded=!overlayAwake
+                overlayAwake=true;overlayInteraction++
+                if(select && (wasFaded || revealRelease)) { revealRelease=true;true } else false
+            } else false
+        }) {
             MusicAmbientPhotos(Modifier.fillMaxSize().zIndex(if(hideVideo) 1f else -1f)) { ambient=false }
-            Box(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=138.dp)) {
+            Box(Modifier.align(Alignment.BottomEnd).padding(end=32.dp,bottom=172.dp)) {
                 trackPlayer(Modifier.width(384.dp).height(216.dp),!hideVideo)
             }
-            Column(Modifier.align(Alignment.BottomEnd).padding(24.dp).width(384.dp).zIndex(2f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                Text(playing!!.title,color=Color.White,maxLines=1,overflow=TextOverflow.Ellipsis,
-                    modifier=Modifier.fillMaxWidth().background(Color.Black.copy(alpha=0.7f)).padding(8.dp),style=MaterialTheme.typography.titleMedium)
+            Column(Modifier.align(Alignment.BottomEnd).padding(32.dp).width(384.dp).zIndex(2f).graphicsLayer { alpha=overlayAlpha },
+                horizontalAlignment=Alignment.End,verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 if(!hideVideo) Spacer(Modifier.height(216.dp))
-                Button(onClick={ hideVideo=!hideVideo }) { Text(if(hideVideo) "Show video" else "Hide video") }
-                Button(onClick={ ambient=false },modifier=Modifier.focusRequester(ambientExitFocus)) { Text("Return to music") }
+                Text(playing!!.title,color=Color.White.copy(alpha=0.85f),maxLines=1,overflow=TextOverflow.Ellipsis,textAlign=TextAlign.End,
+                    modifier=Modifier.fillMaxWidth(),style=MaterialTheme.typography.titleMedium.copy(shadow=Shadow(Color.Black.copy(alpha=0.6f),Offset(0f,1f),3f)))
+                val buttonColors=ButtonDefaults.colors(containerColor=Color.White.copy(alpha=0.04f),contentColor=Color.White,
+                    focusedContainerColor=Color.White.copy(alpha=0.18f),focusedContentColor=Color.White)
+                Button(onClick={ hideVideo=!hideVideo },colors=buttonColors) { Text(if(hideVideo) "Show video" else "Hide video") }
+                Button(onClick={ ambient=false },colors=buttonColors,modifier=Modifier.focusRequester(ambientExitFocus)) { Text("Return to music") }
             }
         }
     } else {
@@ -213,7 +246,7 @@ fun MusicSettingsScreen(onDone:()->Unit,model:MusicViewModel=viewModel()) {
     LaunchedEffect(Unit) { doneFocus.requestFocus() }
     BackHandler { secret="";onDone() }
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-    LazyColumn(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(30.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
+    LazyColumn(Modifier.fillMaxSize().vistaBackdrop().padding(30.dp),verticalArrangement=Arrangement.spacedBy(14.dp)) {
         item {
             Row(horizontalArrangement=Arrangement.spacedBy(18.dp)) {
                 Text("Music account",modifier=Modifier.weight(1f),style=MaterialTheme.typography.headlineMedium)

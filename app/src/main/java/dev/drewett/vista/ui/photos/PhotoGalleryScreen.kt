@@ -18,6 +18,8 @@ import androidx.tv.material3.*
 import coil.compose.AsyncImage
 import dev.drewett.vista.data.immich.ImmichRepository
 import dev.drewett.vista.data.immich.PhotoAsset
+import dev.drewett.vista.ui.theme.vistaBackdrop
+import dev.drewett.vista.ui.components.focusPop
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
@@ -33,24 +35,25 @@ fun PhotoGalleryScreen(onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     var showHidden by remember { mutableStateOf(false) }
     var selected by remember { mutableStateOf<PhotoAsset?>(null) }
+    var viewError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { try { repository.loadGallery() } catch (e: CancellationException) { throw e } catch (_: Exception) { } }
     BackHandler(selected != null) { selected = null }
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(Modifier.fillMaxSize().vistaBackdrop().padding(28.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Immich photos", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium, color = Color.White)
+            Text("Immich photos & videos", modifier = Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium)
             Button(onClick = { showHidden = !showHidden }) { Text(if (showHidden) "Visible photos" else "Hidden (${hidden.size})") }
             Button(onClick = onDone) { Text("Back to settings") }
         }
-        Text(if (loading) "Loading thumbnails…" else status ?: "Choose a photo to show or hide it only in Vista.", color = Color.White)
+        Text(viewError ?: if (loading) "Loading thumbnails…" else status ?: "Choose media to view or hide it only in Vista.")
         LazyVerticalGrid(columns = GridCells.Fixed(4), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             items(if (showHidden) hidden else gallery, key = { it.id }) { asset ->
-                Surface(onClick = { selected = asset }, colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF152030), focusedContainerColor = Color(0xFF263F61), contentColor = Color.White, focusedContentColor = Color.White)) {
+                Surface(onClick = { selected = asset }, modifier=Modifier.focusPop(), scale=ClickableSurfaceDefaults.scale(focusedScale=1f), colors = ClickableSurfaceDefaults.colors(containerColor = Color(0xFF152030), focusedContainerColor = Color(0xFF263F61), contentColor = Color.White, focusedContentColor = Color.White)) {
                     Column {
-                        val thumb by produceState<File?>(asset.cachedFile, asset.id) {
-                            if (value == null) value = try { repository.thumbnail(asset.id) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
+                        val thumb by produceState<File?>(asset.thumbFile ?: asset.cachedFile?.takeUnless { asset.isVideo }, asset.id,asset.thumbFile) {
+                            if (value?.isFile != true) value = try { repository.thumbnail(asset.id) } catch (e: CancellationException) { throw e } catch (_: Exception) { null }
                         }
-                        AsyncImage(model = thumb, contentDescription = "Photo ${asset.date ?: ""}", modifier = Modifier.fillMaxWidth().aspectRatio(16f/10f).background(Color.DarkGray), contentScale = ContentScale.Crop)
-                        Text(asset.date ?: "Photo", modifier = Modifier.padding(8.dp), color = Color.White)
+                        AsyncImage(model = thumb, contentDescription = "${if(asset.isVideo) "Video" else "Photo"} ${asset.date ?: ""}", modifier = Modifier.fillMaxWidth().aspectRatio(16f/10f).background(Color.DarkGray), contentScale = ContentScale.Crop)
+                        Text(listOfNotNull(if(asset.isVideo) "Video · muted" else null,asset.date).joinToString(" · ").ifBlank { "Photo" }, modifier = Modifier.padding(8.dp), color = Color.White)
                     }
                 }
             }
@@ -59,11 +62,15 @@ fun PhotoGalleryScreen(onDone: () -> Unit) {
     selected?.let { asset ->
         Dialog(onDismissRequest = { selected = null }) {
             Column(Modifier.background(MaterialTheme.colorScheme.surface).padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(if (showHidden) "Hidden in Vista" else "Photo options", color = Color.White, style = MaterialTheme.typography.titleLarge)
+                Text(if (showHidden) "Hidden in Vista" else "Media options", style = MaterialTheme.typography.titleLarge)
                 if (!showHidden) Button(onClick = {
                     selected = null
-                    scope.launch { try { repository.showAsset(asset.id); context.startActivity(android.content.Intent(context, dev.drewett.vista.PhotoSlideshowActivity::class.java)) } catch (e: CancellationException) { throw e } catch (_: Exception) { } }
-                }) { Text("View photo slideshow") }
+                    viewError=null
+                    scope.launch { try {
+                        if(repository.ambientAsset(asset.id)!=null) context.startActivity(android.content.Intent(context, dev.drewett.vista.PhotoSlideshowActivity::class.java))
+                        else viewError="This item is still loading. Try again shortly."
+                    } catch (e: CancellationException) { throw e } catch (_: Exception) { viewError="This item could not load. Try again shortly." } }
+                }) { Text(if(asset.isVideo) "View muted video" else "View slideshow") }
                 Button(onClick = {
                     selected = null
                     scope.launch { try { if (showHidden) repository.unhideAsset(asset.id) else repository.hideAsset(asset.id) } catch (e: CancellationException) { throw e } catch (_: Exception) { } }

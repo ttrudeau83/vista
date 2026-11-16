@@ -1,5 +1,7 @@
 package dev.drewett.vista.ui.home
 
+import dev.drewett.vista.ui.theme.vistaBackdrop
+
 import android.content.pm.ApplicationInfo
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
@@ -116,7 +118,7 @@ fun HomeTab(
     var focused by remember { mutableStateOf<Spotlight?>(null) }
     val heroItem = focused ?: sections.firstOrNull()?.let { firstSpotlightOf(it) }
 
-    Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(modifier.fillMaxSize().vistaBackdrop()) {
         // Immersive full-bleed hero behind everything.
         val photoFile = photo.file
         if (photoFile != null) PhotoBackground(photoFile, photo.fit) else HeroBackground(heroItem)

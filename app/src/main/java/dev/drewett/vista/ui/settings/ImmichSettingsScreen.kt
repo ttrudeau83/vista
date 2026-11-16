@@ -36,12 +36,19 @@ import androidx.tv.material3.Button
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import kotlinx.coroutines.launch
+import dev.drewett.vista.data.system.SettingsRepository
+import dev.drewett.vista.data.system.PhotoMotion
+import dev.drewett.vista.ui.theme.vistaBackdrop
 
 @Composable
 fun ImmichSettingsScreen(onDone: () -> Unit, model: ImmichSettingsViewModel = viewModel()) {
     val context = LocalContext.current
     val repository = remember { dev.drewett.vista.data.immich.ImmichRepository.get(context) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val presentation = remember { SettingsRepository(context) }
+    val ambientFit by presentation.ambientFit.collectAsStateWithLifecycle(initialValue = true)
+    val photoMotion by presentation.photoMotion.collectAsStateWithLifecycle(initialValue = PhotoMotion.SUBTLE)
+    val ambientVideos by presentation.ambientVideos.collectAsStateWithLifecycle(initialValue = true)
     val config by model.config.collectAsStateWithLifecycle()
     val state by model.state.collectAsStateWithLifecycle()
     var server by remember { mutableStateOf("") }
@@ -54,7 +61,7 @@ fun ImmichSettingsScreen(onDone: () -> Unit, model: ImmichSettingsViewModel = vi
     LaunchedEffect(Unit) { doneFocus.requestFocus() }
 
     LazyColumn(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(36.dp),
+        Modifier.fillMaxSize().vistaBackdrop().padding(36.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
@@ -64,6 +71,21 @@ fun ImmichSettingsScreen(onDone: () -> Unit, model: ImmichSettingsViewModel = vi
             }
         }
         item { Text("Choose an album for Home, Photos, and the cached screensaver slideshow.", style = MaterialTheme.typography.bodyLarge) }
+        item {
+            Text("Photo mode",style = MaterialTheme.typography.titleLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Button(onClick = { scope.launch { presentation.setAmbientFit(!ambientFit) } }) {
+                    Text(if(ambientFit) "Framing: whole image" else "Framing: fill screen")
+                }
+                Button(onClick = { scope.launch {
+                    presentation.setPhotoMotion(PhotoMotion.entries[(photoMotion.ordinal+1)%PhotoMotion.entries.size])
+                } }) { Text("Motion: ${photoMotion.label}") }
+                Button(onClick = { scope.launch { presentation.setAmbientVideos(!ambientVideos) } }) {
+                    Text(if(ambientVideos) "Videos: muted" else "Videos: off")
+                }
+            }
+            Text("Applies to Photos and screensavers. Whole image keeps the original framing; motion can gently reveal more of the picture. Videos stay silent and play for up to one minute.",style = MaterialTheme.typography.bodyMedium)
+        }
         item {
             SettingsField("Server URL", server, { server = it }, "https://photos.example.com", enabled = !state.busy && !config.loading)
         }

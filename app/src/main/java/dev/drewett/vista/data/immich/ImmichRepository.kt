@@ -2,6 +2,7 @@ package dev.drewett.vista.data.immich
 
 import android.content.Context
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.util.AtomicFile
 import coil.imageLoader
 import coil.memory.MemoryCache
@@ -40,7 +41,11 @@ class ImmichRepository private constructor(context: Context) {
     private var catalog = emptyList<PhotoAsset>()
     private var hidden = emptySet<String>()
     private var currentId: String? = null
+    private var ambientId: String? = null
+    private var shown = emptySet<String>()
+    private val retryAfter = mutableMapOf<String, Long>()
     private var catalogComplete = false
+    private var catalogLimitReached = false
     private var lastPrefetchFailure = 0L
     private val downloads = mutableMapOf<String, Mutex>()
     private val _config = MutableStateFlow(ImmichConfig())
@@ -55,6 +60,8 @@ class ImmichRepository private constructor(context: Context) {
     val hiddenIds: StateFlow<Set<String>> = _hiddenIds.asStateFlow()
     private val _currentPhoto = MutableStateFlow<PhotoAsset?>(null)
     val currentPhoto: StateFlow<PhotoAsset?> = _currentPhoto.asStateFlow()
+    private val _currentAmbient = MutableStateFlow<PhotoAsset?>(null)
+    val currentAmbient: StateFlow<PhotoAsset?> = _currentAmbient.asStateFlow()
     private val _loading = MutableStateFlow(false)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
     private val _status = MutableStateFlow<String?>(null)
@@ -155,14 +162,91 @@ class ImmichRepository private constructor(context: Context) {
     suspend fun photo(refresh: Boolean = false): File? = choosePhoto(advance = refresh)
     suspend fun nextPhoto(): File? = choosePhoto(advance = true)
 
+    /** A missing fresh item means keep the current visual while the rolling cache refills. */
+    suspend fun ambientMedia(advance: Boolean = false, includeVideos: Boolean = true): AmbientMedia? = safe {
+        awaitReady()
+        val snapshot = snapshotOrNull() ?: return@safe null
+        if (mutex.withLock { catalog.isEmpty() }) refreshCatalog(snapshot, firstPageOnly = true)
+        val result = mutex.withLock {
+            if (!isCurrentLocked(snapshot)) return@withLock null
+            val eligible = ambientEligibleLocked(includeVideos)
+            val current = eligible.firstOrNull { it.id == ambientId && it.cachedFile?.isFile == true }
+            if (!advance && current != null) return@withLock current.ambient()
+            if (AmbientRotationPolicy.cycleComplete(eligible, shown, catalogComplete)) {
+                shown = shown - eligible.map { it.id }.toSet()
+                retryAfter.clear()
+                writeIndexLocked()
+            }
+            val chosen = AmbientRotationPolicy.ready(eligible, shown, ambientId, Random.nextInt())
+                ?: return@withLock null
+            ambientId = chosen.id
+            chosen.cachedFile?.setLastModified(System.currentTimeMillis())
+            publishLocked()
+            chosen.ambient()
+        }
+        requestPrefetch()
+        startWarmPreviews(snapshot)
+        if (!mutex.withLock { catalogComplete }) requestCatalog(snapshot)
+        result
+    }
+
+    suspend fun nextAmbientMedia(includeVideos: Boolean = true): AmbientMedia? = ambientMedia(true, includeVideos)
+    suspend fun ambientAsset(id: String, includeVideos: Boolean = true): AmbientMedia? = safe {
+        awaitReady()
+        requireNotNull(ImmichProtocol.id(id)) { "Choose valid media." }
+        val snapshot = snapshotOrNull() ?: return@safe null
+        val asset = mutex.withLock { catalog.firstOrNull { it.id == id && id !in hidden } }
+            ?: throw ImmichException("This media is hidden or unavailable.")
+        if (asset.isVideo && !includeVideos) return@safe null
+        if (asset.isVideo) withTimeout(90_000) { download(snapshot,id) }
+        else withTimeout(25_000) { downloadPreview(snapshot,id) }
+        val result = mutex.withLock {
+            if (!isCurrentLocked(snapshot)) return@withLock null
+            withFilesLocked().firstOrNull { it.id == id && !it.hidden }?.let {
+                ambientId = id; publishLocked(); it.ambient()
+            }
+        }
+        requestPrefetch()
+        result
+    }
+    suspend fun cachedAmbientMedia(excluding: File? = null, includeVideos: Boolean = true): AmbientMedia? = safe {
+        awaitReady()
+        mutex.withLock {
+            AmbientRotationPolicy.ready(ambientEligibleLocked(includeVideos).filter { it.cachedFile != excluding }, shown,
+                ambientId, Random.nextInt())?.ambient()
+        }
+    }
+    /** Called after decode/onPrepared succeeds, never merely when an item is prefetched. */
+    suspend fun markAmbientShown(id: String) = safe {
+        awaitReady()
+        mutex.withLock {
+            if (ambientId == id && catalog.any { it.id == id } && id !in hidden) {
+                shown = shown + id
+                writeIndexLocked()
+                retireShownLocked()
+                publishLocked()
+            }
+        }
+        requestPrefetch()
+    }
+    suspend fun skipAmbientMedia(id: String) = safe {
+        awaitReady()
+        mutex.withLock {
+            if (catalog.any { it.id == id }) { shown = shown + id; writeIndexLocked() }
+        }
+        requestPrefetch()
+    }
+    fun endAmbientSession() { scope.launch { mutex.withLock { ambientId = null; publishLocked() } } }
+    private fun PhotoAsset.ambient(): AmbientMedia? = cachedFile?.let { AmbientMedia(id, it, kind) }
+
     private suspend fun choosePhoto(advance: Boolean): File? = safe {
         awaitReady()
         val snapshot = snapshotOrNull() ?: return@safe null
         val cached = mutex.withLock {
-            val eligible = eligibleLocked()
+            val eligible = eligibleLocked().filter { it.kind == MediaKind.PHOTO }
             val cachedCandidates = PhotoPolicy.dailyPool(eligible).filter { it.cachedFile != null }.ifEmpty {
                 // An offline anniversary lookup must not block navigation to other cached photos.
-                PhotoPolicy.eligible(withFilesLocked(), hidden, SlideshowMode.RANDOM).filter { it.cachedFile != null }
+                PhotoPolicy.eligible(withFilesLocked(), hidden, SlideshowMode.RANDOM).filter { it.kind == MediaKind.PHOTO && it.cachedFile != null }
             }
             val current = eligible.firstOrNull { it.id == currentId && it.cachedFile != null }
             val chosen = if (!advance && current != null) current else PhotoPolicy.cachedNext(cachedCandidates, currentId, Random.nextInt())
@@ -179,7 +263,7 @@ class ImmichRepository private constructor(context: Context) {
                 val worker = startPrefetch(snapshot) ?: return@withTimeout null
                 startBootstrap(snapshot)
                 coroutineScope {
-                    val ready = async { gallery.first { assets -> assets.any { it.cachedFile?.isFile == true } } }
+                    val ready = async { gallery.first { assets -> assets.any { it.kind == MediaKind.PHOTO && it.cachedFile?.isFile == true } } }
                     try {
                         select<Unit> {
                             ready.onAwait { }
@@ -189,8 +273,8 @@ class ImmichRepository private constructor(context: Context) {
                 }
                 mutex.withLock {
                     if (!isCurrentLocked(snapshot)) return@withLock null
-                    val eligible = eligibleLocked().filter { it.cachedFile != null }.ifEmpty {
-                        PhotoPolicy.eligible(withFilesLocked(), hidden, SlideshowMode.RANDOM).filter { it.cachedFile != null }
+                    val eligible = eligibleLocked().filter { it.kind == MediaKind.PHOTO && it.cachedFile != null }.ifEmpty {
+                        PhotoPolicy.eligible(withFilesLocked(), hidden, SlideshowMode.RANDOM).filter { it.kind == MediaKind.PHOTO && it.cachedFile != null }
                     }
                     val selected = PhotoPolicy.cachedNext(eligible, currentId, Random.nextInt())
                         ?: throw ImmichException(_status.value ?: "No visible photos were found in this album.")
@@ -209,7 +293,7 @@ class ImmichRepository private constructor(context: Context) {
         val snapshot = snapshotOrNull() ?: return@safe null
         val cached = mutex.withLock {
             if (id in hidden || catalog.none { it.id == id }) throw ImmichException("This photo is hidden or unavailable.")
-            (fileFor(snapshot.namespace, id).takeIf { it.isFile }
+            (fileFor(snapshot.namespace, id).takeIf { it.isFile && catalog.firstOrNull { asset -> asset.id == id }?.kind == MediaKind.PHOTO }
                 ?: bootstrapFor(snapshot.namespace, id).takeIf { it.isFile })?.let { selectLocked(id) }
         }
         if (cached != null) { requestPrefetch(); return@safe cached }
@@ -227,7 +311,7 @@ class ImmichRepository private constructor(context: Context) {
         val cached = mutex.withLock {
             if (catalog.none { it.id == id } && id !in hidden) return@withLock null
             thumbnailFor(snapshot.namespace, id).takeIf(File::isFile)
-                ?: fileFor(snapshot.namespace, id).takeIf(File::isFile)
+                ?: fileFor(snapshot.namespace, id).takeIf { it.isFile && catalog.firstOrNull { asset -> asset.id == id }?.kind == MediaKind.PHOTO }
         }
         if (cached != null) { cached.setLastModified(System.currentTimeMillis()); return@safe cached }
         val lock = mutex.withLock { downloads.getOrPut("thumb:${snapshot.generation}:$id") { Mutex() } }
@@ -261,14 +345,14 @@ class ImmichRepository private constructor(context: Context) {
     suspend fun cachedPhoto(excluding: File? = null): File? = safe {
         awaitReady()
         mutex.withLock {
-            val cached = eligibleLocked().filter { it.cachedFile != null }.ifEmpty {
-                PhotoPolicy.eligible(withFilesLocked(), hidden, SlideshowMode.RANDOM).filter { it.cachedFile != null }
+            val cached = eligibleLocked().filter { it.kind == MediaKind.PHOTO && it.cachedFile != null }.ifEmpty {
+                PhotoPolicy.eligible(withFilesLocked(), hidden, SlideshowMode.RANDOM).filter { it.kind == MediaKind.PHOTO && it.cachedFile != null }
             }
             (cached.firstOrNull { it.cachedFile != excluding } ?: cached.firstOrNull())?.cachedFile
         }
     }
 
-    suspend fun hideCurrent() { currentPhoto.value?.id?.let { hideAsset(it) } }
+    suspend fun hideCurrent() { (currentAmbient.value ?: currentPhoto.value)?.id?.let { hideAsset(it) } }
     suspend fun hideAsset(id: String) = changeHidden(id, true)
     suspend fun unhideAsset(id: String) = changeHidden(id, false)
     suspend fun unhideAll() = safe {
@@ -285,6 +369,7 @@ class ImmichRepository private constructor(context: Context) {
                 deleteFileLocked(fileFor(it, id)); deleteFileLocked(thumbnailFor(it, id)); deleteFileLocked(bootstrapFor(it, id))
             }
             if (currentId == id && hide) currentId = null
+            if (ambientId == id && hide) ambientId = null
             writeIndexLocked(); publishLocked(); _photoRevision.value += 1
         }
         requestPrefetch()
@@ -303,7 +388,7 @@ class ImmichRepository private constructor(context: Context) {
 
     private suspend fun requestCatalog(snapshot: Snapshot) {
         val job = mutex.withLock {
-            if (!isCurrentLocked(snapshot) || catalogJob?.isActive == true) return@withLock null
+            if (!isCurrentLocked(snapshot) || catalogJob?.isActive == true || catalogLimitReached) return@withLock null
             scope.launch(start = CoroutineStart.LAZY) { backgroundCatalog(snapshot) }.also { catalogJob = it }
         }
         job?.start()
@@ -326,21 +411,25 @@ class ImmichRepository private constructor(context: Context) {
             commitCatalog(snapshot, collected)
             if (!firstPageOnly) {
                 val visited = mutableSetOf(1)
-                while (continuation != null && visited.size < 5 && collected.size < 500) {
+                while (continuation != null && visited.size < 100 && collected.size < AmbientRotationPolicy.MAX_CATALOG) {
                     val page = continuation ?: break
                     if (!visited.add(page)) break
                     currentCoroutineContext().ensureActive()
                     if (mutex.withLock { !isCurrentLocked(snapshot) }) return
                     val response = requestPage(client, snapshot.albumId, page)
                     collected = (collected + response.assets)
-                        .distinctBy { it.id }.take(500)
+                        .distinctBy { it.id }.take(AmbientRotationPolicy.MAX_CATALOG)
                     continuation = response.nextPage
-                    commitCatalog(snapshot, collected)
+                    if (visited.size <= 5 || visited.size % 5 == 0 || continuation == null) commitCatalog(snapshot, collected)
                 }
-                mutex.withLock { if (isCurrentLocked(snapshot)) catalogComplete = true }
+                commitCatalog(snapshot, collected)
+                mutex.withLock { if (isCurrentLocked(snapshot)) {
+                    catalogComplete = continuation == null
+                    catalogLimitReached = continuation != null && collected.size >= AmbientRotationPolicy.MAX_CATALOG
+                } }
             }
             mutex.withLock { if (isCurrentLocked(snapshot)) _status.value = if (continuation != null)
-                "Showing ${collected.size} photos from this album; more photos are available on Immich." else null }
+                "Loaded ${collected.size} album items; more are available on Immich." else null }
         } finally { mutex.withLock { if (isCurrentLocked(snapshot)) _loading.value = false } }
     }
 
@@ -358,7 +447,7 @@ class ImmichRepository private constructor(context: Context) {
                 downloads["${snapshot.generation}:${it.id}"]?.isLocked == true ||
                 downloads["preview:${snapshot.generation}:${it.id}"]?.isLocked == true
         }
-        catalog = (assets + retained).distinctBy { it.id }.take(600)
+        catalog = (assets + retained).distinctBy { it.id }.take(AmbientRotationPolicy.MAX_CATALOG + 120)
         writeIndexLocked(); publishLocked()
     }
 
@@ -376,8 +465,8 @@ class ImmichRepository private constructor(context: Context) {
                 withTimeout(25_000) {
                     gallery.first { it.isNotEmpty() }
                     val id = mutex.withLock {
-                        if (!isCurrentLocked(snapshot) || eligibleLocked().any { it.cachedFile != null }) return@withLock null
-                        eligibleLocked().firstOrNull()?.id
+                        if (!isCurrentLocked(snapshot) || eligibleLocked().any { it.kind == MediaKind.PHOTO && it.cachedFile != null }) return@withLock null
+                        eligibleLocked().firstOrNull { it.kind == MediaKind.PHOTO }?.id
                     } ?: return@withTimeout
                     downloadPreview(snapshot, id)
                 }
@@ -390,9 +479,9 @@ class ImmichRepository private constructor(context: Context) {
         if (!isCurrentLocked(snapshot) || previewWarmJob?.isActive == true) return@withLock
         previewWarmJob = scope.launch {
             gallery.first { it.isNotEmpty() }
-            val ids = mutex.withLock { PhotoPolicy.dailyPool(eligibleLocked()).map { it.id } }
+            val ids = mutex.withLock { rollingWindowLocked().filter { !it.isVideo }.map { it.id } }
             for (id in ids) {
-                val needed = mutex.withLock { isCurrentLocked(snapshot) && id !in hidden &&
+                val needed = mutex.withLock { isCurrentLocked(snapshot) && id !in hidden && id !in shown &&
                     !fileFor(snapshot.namespace,id).isFile && !bootstrapFor(snapshot.namespace,id).isFile }
                 if (!needed) continue
                 try { withTimeout(20_000) { downloadPreview(snapshot,id) } }
@@ -422,15 +511,17 @@ class ImmichRepository private constructor(context: Context) {
                     BitmapFactory.decodeFile(temporary.absolutePath, bounds)
                     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw ImmichException("This photo preview cannot be displayed.")
                     mutex.withLock previewCommit@ {
-                        if (!isCurrentLocked(snapshot) || id in hidden) return@previewCommit null
+                        if (!isCurrentLocked(snapshot) || id in hidden || (id in shown && id != currentId && id != ambientId)) return@previewCommit null
                         fileFor(snapshot.namespace, id).takeIf(File::isFile)?.let { return@previewCommit it }
                         val file = bootstrapFor(snapshot.namespace, id)
                         if (!temporary.renameTo(file)) throw ImmichException("Cannot save the photo preview.")
                         directory.listFiles().orEmpty().filter {
                             it.name.startsWith("bootstrap-") && it != file &&
-                                currentId?.let { current -> it == bootstrapFor(snapshot.namespace, current) } != true
+                                currentId?.let { current -> it == bootstrapFor(snapshot.namespace, current) } != true &&
+                                ambientId?.let { current -> it == bootstrapFor(snapshot.namespace, current) } != true
                         }.sortedByDescending { it.lastModified() }.drop(PhotoPolicy.DAILY_POOL_SIZE - 1).forEach(::deleteFileLocked)
                         evictLocked(snapshot.namespace,id)
+                        retireShownLocked()
                         _status.value = "Showing a quick preview while the full-size photo downloads."
                         publishLocked()
                         file
@@ -448,10 +539,12 @@ class ImmichRepository private constructor(context: Context) {
             while (true) {
                 val targets = mutex.withLock {
                     if (!isCurrentLocked(snapshot)) return
-                    val daily = PhotoPolicy.dailyPool(eligibleLocked())
+                    val daily = rollingWindowLocked()
                     val current = withFilesLocked().firstOrNull { it.id == currentId }
-                    PhotoPolicy.prefetchCandidates((daily + listOfNotNull(current)).distinctBy { it.id }, hidden,
-                        saved?.slideshowMode ?: SlideshowMode.RANDOM, currentId).map { it.id }
+                    val photos = PhotoPolicy.prefetchCandidates((daily.filter { !it.isVideo } + listOfNotNull(current?.takeIf { !it.isVideo })).distinctBy { it.id }, hidden,
+                        saved?.slideshowMode ?: SlideshowMode.RANDOM, currentId)
+                    val videos = daily.filter { it.isVideo && it.cachedFile == null }.take(1)
+                    (videos + photos.take(if(videos.isEmpty()) 3 else 2)).map { it.id }
                 }
                 if (targets.isEmpty()) return
                 val successes = coroutineScope {
@@ -459,8 +552,10 @@ class ImmichRepository private constructor(context: Context) {
                         try { download(snapshot, id) != null }
                         catch (cancelled: CancellationException) { throw cancelled }
                         catch (error: Exception) {
-                            mutex.withLock { if (isCurrentLocked(snapshot)) _status.value =
-                                if (error is ImmichException) error.message else "Some photos could not load. Cached photos remain available." }
+                            mutex.withLock { if (isCurrentLocked(snapshot)) {
+                                retryAfter[id] = System.currentTimeMillis() + 60_000
+                                _status.value = if (error is ImmichException) error.message else "Some media could not load. Cached media remain available."
+                            } }
                             false
                         }
                     } }.map { it.await() }
@@ -487,29 +582,43 @@ class ImmichRepository private constructor(context: Context) {
             if (existing != null) return@assetLock existing
             networkSlots.withPermit network@ {
                 if (mutex.withLock { !isCurrentLocked(snapshot) || id in hidden }) return@network null
+                val isVideo = mutex.withLock { catalog.firstOrNull { it.id == id }?.isVideo == true }
                 val directory = File(root, snapshot.namespace).apply { mkdirs() }
                 val staging = File(directory, ".download-$id-${UUID.randomUUID()}")
                 try {
                     try {
                         withTimeout(90_000) {
-                            staging.outputStream().use { ImmichClient(snapshot.connection.server, snapshot.connection.key).image(id, it) }
+                            staging.outputStream().use {
+                                val client = ImmichClient(snapshot.connection.server, snapshot.connection.key)
+                                if(isVideo) client.video(id,it) else client.image(id,it)
+                            }
                         }
                     } catch (_: TimeoutCancellationException) {
                         currentCoroutineContext().ensureActive()
                         throw ImmichException("This photo took too long to download. Cached photos remain available.")
                     }
                     currentCoroutineContext().ensureActive()
-                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                    BitmapFactory.decodeFile(staging.absolutePath, bounds)
-                    if (bounds.outWidth !in 1..100_000 || bounds.outHeight !in 1..100_000)
-                        throw ImmichException("This photo format cannot be displayed on this device.")
+                    if(isVideo) {
+                        val metadata = MediaMetadataRetriever()
+                        try {
+                            metadata.setDataSource(staging.absolutePath)
+                            if((metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0) <= 0)
+                                throw ImmichException("This video format cannot be displayed on this device.")
+                        } finally { metadata.release() }
+                    } else {
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeFile(staging.absolutePath, bounds)
+                        if (bounds.outWidth !in 1..100_000 || bounds.outHeight !in 1..100_000)
+                            throw ImmichException("This photo format cannot be displayed on this device.")
+                    }
                     mutex.withLock commit@ {
-                        if (!isCurrentLocked(snapshot) || id in hidden) return@commit null
+                        if (!isCurrentLocked(snapshot) || id in hidden || (id in shown && id != currentId && id != ambientId)) return@commit null
                         val file = fileFor(snapshot.namespace, id)
                         if (!staging.renameTo(file)) throw ImmichException("Cannot save this photo to the private cache.")
                         val upgradedCurrent = id == currentId
                         deleteFileLocked(bootstrapFor(snapshot.namespace, id))
                         evictLocked(snapshot.namespace, id)
+                        retireShownLocked()
                         publishLocked()
                         // Upgrade the existing current photo in place, without advancing to another ID.
                         if (upgradedCurrent) { _photoRevision.value += 1; _status.value = null }
@@ -521,18 +630,27 @@ class ImmichRepository private constructor(context: Context) {
     }
 
     private fun eligibleLocked() = PhotoPolicy.eligible(withFilesLocked(), hidden, saved?.slideshowMode ?: SlideshowMode.RANDOM)
+    private fun ambientEligibleLocked(includeVideos: Boolean = true) = eligibleLocked().filter { includeVideos || !it.isVideo }
+    private fun rollingWindowLocked(): List<PhotoAsset> {
+        val now = System.currentTimeMillis()
+        val eligible = ambientEligibleLocked().filter { (retryAfter[it.id] ?: 0) <= now }
+        return AmbientRotationPolicy.window(eligible, shown)
+    }
     private fun withFilesLocked(): List<PhotoAsset> {
         val namespace = saved?.namespace
+        val files = namespace?.let { File(root,it).listFiles().orEmpty().associateBy(File::getName) }.orEmpty()
         return catalog.map { asset ->
-            val full = namespace?.let { fileFor(it, asset.id).takeIf(File::isFile) }
-            val file = full ?: namespace?.let { bootstrapFor(it, asset.id).takeIf(File::isFile) }
+            val full = files["asset-${asset.id}.image"]
+            val preview = files["bootstrap-${asset.id}.image"]
+            val file = if(asset.isVideo) full else full ?: preview
             asset.copy(cachedFile = file, hidden = asset.id in hidden,
-                thumbFile = namespace?.let { thumbnailFor(it, asset.id).takeIf(File::isFile) } ?: file,
+                thumbFile = files["thumb-${asset.id}.image"] ?: preview ?: file?.takeIf { !asset.isVideo },
                 quality = if (full != null) PhotoQuality.FULL_SIZE else PhotoQuality.PREVIEW)
         }
     }
     private fun selectLocked(id: String): File? {
         val asset = withFilesLocked().firstOrNull { it.id == id && !it.hidden } ?: return null
+        if(asset.isVideo) return saved?.namespace?.let { bootstrapFor(it,id).takeIf(File::isFile) ?: thumbnailFor(it,id).takeIf(File::isFile) }
         val file = asset.cachedFile ?: return null
         val changed = currentId != id
         currentId = id; file.setLastModified(System.currentTimeMillis())
@@ -546,6 +664,7 @@ class ImmichRepository private constructor(context: Context) {
         _hiddenPhotos.value = hidden.map { id -> assets.firstOrNull { it.id == id } ?: PhotoAsset(id, hidden = true) }
         _hiddenIds.value = hidden.toSet()
         _currentPhoto.value = assets.firstOrNull { it.id == currentId && !it.hidden && it.cachedFile != null }
+        _currentAmbient.value = assets.firstOrNull { it.id == ambientId && !it.hidden && it.cachedFile != null }
     }
 
     private fun fileFor(namespace: String, id: String) = File(File(root, namespace), "asset-$id.image")
@@ -556,35 +675,40 @@ class ImmichRepository private constructor(context: Context) {
     }
     private fun writeIndexLocked() {
         val file = indexLocked() ?: return
-        val assets = JSONArray().apply { catalog.forEach { put(JSONObject().put("id", it.id).put("date", it.date)) } }
+        val assets = JSONArray().apply { catalog.forEach { put(JSONObject().put("id", it.id).put("date", it.date).put("kind",it.kind.name)) } }
         val bytes = JSONObject().put("assets", assets).put("hidden", JSONArray(hidden.toList()))
+            .put("shown",JSONArray(shown.toList())).put("ambientId",ambientId)
             .put("currentId", currentId).toString().toByteArray(Charsets.UTF_8)
         val stream = file.startWrite()
         try { stream.write(bytes); file.finishWrite(stream) }
         catch (error: Exception) { file.failWrite(stream); throw error }
     }
     private fun readIndexLocked() {
-        catalog = emptyList(); hidden = emptySet(); currentId = null; catalogComplete = false
+        catalog = emptyList(); hidden = emptySet(); shown = emptySet(); currentId = null; ambientId = null; catalogComplete = false; catalogLimitReached = false
         val index = indexLocked() ?: return
         try {
-            if (!index.baseFile.exists() || index.baseFile.length() > 1024 * 1024) return
+            if (!index.baseFile.exists() || index.baseFile.length() > 8 * 1024 * 1024) return
             val json = JSONObject(index.readFully().toString(Charsets.UTF_8))
             val values = json.optJSONArray("assets") ?: JSONArray()
             catalog = buildList {
-                for (i in 0 until minOf(values.length(), 600)) {
+                for (i in 0 until minOf(values.length(), AmbientRotationPolicy.MAX_CATALOG + 120)) {
                     val item = values.optJSONObject(i) ?: continue
                     val id = ImmichProtocol.id(item.optString("id")) ?: continue
-                    add(PhotoAsset(id, item.optString("date").takeIf { it.length == 10 }))
+                    add(PhotoAsset(id, item.optString("date").takeIf { it.length == 10 },
+                        kind = if(item.optString("kind") == "VIDEO") MediaKind.VIDEO else MediaKind.PHOTO))
                 }
             }.distinctBy { it.id }
             val exclusions = json.optJSONArray("hidden") ?: JSONArray()
             hidden = buildSet { for (i in 0 until exclusions.length()) ImmichProtocol.id(exclusions.optString(i))?.let(::add) }
+            val seen = json.optJSONArray("shown") ?: JSONArray()
+            shown = buildSet { for (i in 0 until minOf(seen.length(),AmbientRotationPolicy.MAX_CATALOG + 120)) ImmichProtocol.id(seen.optString(i))?.let(::add) }
             currentId = ImmichProtocol.id(json.optString("currentId"))
+            ambientId = ImmichProtocol.id(json.optString("ambientId"))
         } catch (_: Exception) { /* Invalid local metadata cannot restore another account's photos. */ }
     }
     private fun resetLocked() {
         generation += 1; prefetchJob?.cancel(); catalogJob?.cancel(); bootstrapJob?.cancel(); previewWarmJob?.cancel(); downloads.clear()
-        catalog = emptyList(); hidden = emptySet(); currentId = null; catalogComplete = false
+        catalog = emptyList(); hidden = emptySet(); shown = emptySet(); currentId = null; ambientId = null; catalogComplete = false; catalogLimitReached = false; retryAfter.clear()
         if (root.exists()) root.walkTopDown().filter { it.isFile }.forEach(::deleteFileLocked)
         root.deleteRecursively(); lastPrefetchFailure = 0
         _loading.value = false; _status.value = null; publishLocked(); _photoRevision.value += 1
@@ -599,10 +723,20 @@ class ImmichRepository private constructor(context: Context) {
         val files = File(root, namespace).listFiles().orEmpty().filter {
             (it.name.startsWith("asset-") || it.name.startsWith("bootstrap-")) && it.name.endsWith(".image") }
         val protected = setOfNotNull(fileFor(namespace, protectId).name, bootstrapFor(namespace, protectId).name,
-            currentId?.let { fileFor(namespace, it).name }, currentId?.let { bootstrapFor(namespace, it).name })
+            currentId?.let { fileFor(namespace, it).name }, currentId?.let { bootstrapFor(namespace, it).name },
+            ambientId?.let { fileFor(namespace,it).name }, ambientId?.let { bootstrapFor(namespace,it).name })
         val evict = PhotoCachePolicy.evictionKeys(files.map { CachedPhotoEntry(it.name, it.length(), it.lastModified()) }, protected)
         files.filter { it.name in evict }.forEach(::deleteFileLocked)
         File(root, namespace).listFiles().orEmpty().filter { it.name.startsWith("photo-") }.forEach(::deleteFileLocked)
+    }
+    /** Retire viewed files only after a fresh replacement exists; displayed files retain leases. */
+    private fun retireShownLocked() {
+        val namespace = saved?.namespace ?: return
+        if (withFilesLocked().none { it.id !in shown && !it.hidden && it.cachedFile != null }) return
+        for(id in shown) {
+            if(id == currentId || id == ambientId) continue
+            deleteFileLocked(fileFor(namespace,id)); deleteFileLocked(bootstrapFor(namespace,id))
+        }
     }
     private fun evictThumbnailsLocked(namespace: String, protect: File) {
         val files = File(root, namespace).listFiles().orEmpty().filter { it.name.startsWith("thumb-") && it.name.endsWith(".image") }

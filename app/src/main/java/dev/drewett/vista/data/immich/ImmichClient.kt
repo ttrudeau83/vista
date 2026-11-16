@@ -17,7 +17,7 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
     suspend fun catalogPage(albumId: String, page: Int): PhotoPage {
         requireNotNull(ImmichProtocol.id(albumId))
         require(page in 1..1_000_000)
-        val filter = JSONObject().put("albumIds", JSONArray().put(albumId)).put("type", "IMAGE")
+        val filter = JSONObject().put("albumIds", JSONArray().put(albumId))
             .put("isTrashed", false).put("size", 100).put("page", page).toString()
         return ImmichProtocol.photoPage(json("/search/metadata", filter))
     }
@@ -76,13 +76,19 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
         request("/assets/$assetId/thumbnail?size=preview", 8L * 1024 * 1024, output, image = true)
     }
 
+    suspend fun video(assetId: String, output: OutputStream) {
+        requireNotNull(ImmichProtocol.id(assetId))
+        // Immich serves its encoded playback file where available, falling back to the original.
+        request("/assets/$assetId/video/playback", 128L * 1024 * 1024, output, image = false, video = true)
+    }
+
     private suspend fun json(path: String, body: String? = null): String {
         val output = ByteArrayOutputStream()
         request(path, 2L * 1024 * 1024, output, image = false, body = body)
         return output.toString(Charsets.UTF_8.name())
     }
 
-    private suspend fun request(path: String, maxBytes: Long, output: OutputStream, image: Boolean, body: String? = null) {
+    private suspend fun request(path: String, maxBytes: Long, output: OutputStream, image: Boolean, body: String? = null, video: Boolean = false) {
         val origin = URI(server)
         var target = URI(server + path)
         repeat(5) {
@@ -97,7 +103,7 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
                 connection.readTimeout = 10_000
                 connection.useCaches = false
                 connection.setRequestProperty("x-api-key", apiKey)
-                connection.setRequestProperty("Accept", if (image) "image/*" else "application/json")
+                connection.setRequestProperty("Accept", if (image) "image/*" else if(video) "video/*" else "application/json")
                 if (body != null) {
                     connection.requestMethod = "POST"
                     connection.doOutput = true
@@ -119,12 +125,15 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
                     else -> throw ImmichException("Immich request failed (HTTP $status).")
                 }
                 if (connection.contentLengthLong > maxBytes) {
-                    if (!image) throw ImmichResponseTooLarge()
-                    throw ImmichException("This photo is too large to cache.")
+                    if (!image && !video) throw ImmichResponseTooLarge()
+                    throw ImmichException("This media file is too large to cache.")
                 }
                 val type = connection.contentType.orEmpty().substringBefore(';').lowercase()
                 if (image && !type.startsWith("image/") && type != "application/octet-stream") {
                     throw ImmichException("Immich did not return a supported photo.")
+                }
+                if (video && !type.startsWith("video/") && type != "application/octet-stream") {
+                    throw ImmichException("Immich did not return a supported video.")
                 }
                 connection.inputStream.use { input ->
                     val buffer = ByteArray(16 * 1024)
@@ -135,7 +144,7 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
                         if (count == -1) break
                         total += count
                         if (total > maxBytes) {
-                            if (!image) throw ImmichResponseTooLarge()
+                            if (!image && !video) throw ImmichResponseTooLarge()
                             throw ImmichException("The server response exceeded the cache limit.")
                         }
                         output.write(buffer, 0, count)

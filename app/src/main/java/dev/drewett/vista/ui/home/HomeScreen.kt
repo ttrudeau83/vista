@@ -38,6 +38,7 @@ import dev.drewett.vista.ui.calendar.FamilyCalendarPanel
 import dev.drewett.vista.ui.photos.PhotosScreen
 import dev.drewett.vista.ui.content.SearchScreen
 import dev.drewett.vista.ui.music.MusicScreen
+import dev.drewett.vista.ui.theme.vistaBackdrop
 import dev.drewett.vista.service.GoogleTvLaunchSession
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -124,7 +125,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
         }
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Box(Modifier.fillMaxSize().vistaBackdrop()) {
         when (tab) {
             VistaTab.FOR_YOU ->
                 if (!loaded) Loading() else if (sections.isEmpty()) EmptyContent("No launchable apps or published content.") else HomeTab(

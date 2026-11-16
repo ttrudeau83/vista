@@ -5,6 +5,11 @@ import java.time.LocalDate
 
 enum class SlideshowMode { RANDOM, ON_THIS_DAY }
 enum class PhotoQuality { PREVIEW, FULL_SIZE }
+enum class MediaKind { PHOTO, VIDEO }
+
+data class AmbientMedia(val id: String, val file: File, val kind: MediaKind) {
+    val isVideo: Boolean get() = kind == MediaKind.VIDEO
+}
 
 data class PhotoAsset(
     val id: String,
@@ -13,7 +18,10 @@ data class PhotoAsset(
     val hidden: Boolean = false,
     val thumbFile: File? = null,
     val quality: PhotoQuality = PhotoQuality.FULL_SIZE,
-)
+    val kind: MediaKind = MediaKind.PHOTO,
+) {
+    val isVideo: Boolean get() = kind == MediaKind.VIDEO
+}
 
 internal data class PhotoPage(val assets: List<PhotoAsset>, val total: Int, val nextPage: Int? = null)
 
@@ -53,6 +61,31 @@ object PhotoPolicy {
         val missing = candidates.filter { it.cachedFile == null || it.quality == PhotoQuality.PREVIEW }
         val preferred = currentUpgrade ?: if (originals.isEmpty()) candidates.firstOrNull() else null
         return (listOfNotNull(preferred) + missing.shuffled()).distinctBy { it.id }.take(if (full) 1 else 3)
+    }
+}
+
+/** A rolling window is prepared from the unviewed library, never a repeated daily sample. */
+object AmbientRotationPolicy {
+    const val PHOTO_WINDOW = 60
+    const val VIDEO_WINDOW = 2
+    const val MAX_CATALOG = 10_000
+
+    fun unseen(assets: List<PhotoAsset>, shown: Set<String>): List<PhotoAsset> =
+        assets.filter { it.id !in shown && !it.hidden }.distinctBy { it.id }
+
+    fun ready(assets: List<PhotoAsset>, shown: Set<String>, previous: String?, randomIndex: Int): PhotoAsset? {
+        val ready = unseen(assets, shown).filter { it.cachedFile?.isFile == true && it.id != previous }
+        return ready.takeIf { it.isNotEmpty() }?.get(Math.floorMod(randomIndex, ready.size))
+    }
+
+    fun cycleComplete(assets: List<PhotoAsset>, shown: Set<String>, catalogComplete: Boolean): Boolean =
+        catalogComplete && assets.isNotEmpty() && unseen(assets, shown).isEmpty()
+
+    fun window(assets: List<PhotoAsset>, shown: Set<String>): List<PhotoAsset> {
+        val fresh = unseen(assets, shown)
+        // Stable per cycle/order: request coalescing cannot keep changing download targets.
+        return fresh.filter { it.kind == MediaKind.PHOTO }.take(PHOTO_WINDOW) +
+            fresh.filter { it.kind == MediaKind.VIDEO }.take(VIDEO_WINDOW)
     }
 }
 

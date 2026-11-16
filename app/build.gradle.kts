@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 8
-        versionName = "0.4.4-music-browser"
+        versionCode = 9
+        versionName = "0.4.5-ambient-library"
     }
 
     buildTypes {

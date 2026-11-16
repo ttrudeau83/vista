@@ -82,11 +82,12 @@ object ImmichProtocol {
         val assets = buildList {
             for (index in 0 until items.length()) {
                 val item = items.optJSONObject(index) ?: continue
-                if (item.optString("type") != "IMAGE" || item.optBoolean("isTrashed", false)) continue
+                val kind = when(item.optString("type")) { "IMAGE" -> MediaKind.PHOTO; "VIDEO" -> MediaKind.VIDEO; else -> continue }
+                if (item.optBoolean("isTrashed", false)) continue
                 val id = id(item.optString("id")) ?: continue
                 val rawDate = item.optString("localDateTime").ifBlank { item.optString("fileCreatedAt") }
                 val date = try { java.time.LocalDate.parse(rawDate.take(10)).toString() } catch (_: Exception) { null }
-                add(PhotoAsset(id, date))
+                add(PhotoAsset(id, date, kind = kind))
             }
         }.distinctBy { it.id }
         val nextPage = response.optString("nextPage").toIntOrNull()?.takeIf { it in 1..1_000_000 }

@@ -1,5 +1,7 @@
 package dev.drewett.vista.ui.calendar
 
+import dev.drewett.vista.ui.theme.vistaBackdrop
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -92,7 +94,7 @@ fun FamilyCalendarScreen(onDone: () -> Unit, use24Hour: Boolean, model: FamilyCa
     LaunchedEffect(Unit) { doneFocus.requestFocus() }
     BackHandler { if (configure) { configure = false; feed = "" } else onDone() }
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(Modifier.fillMaxSize().vistaBackdrop().padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("Family calendar", style = MaterialTheme.typography.headlineMedium, modifier = Modifier.weight(1f))
             Button(onClick = { configure = !configure }) { Text(if (configure) "Month view" else "Calendar settings") }

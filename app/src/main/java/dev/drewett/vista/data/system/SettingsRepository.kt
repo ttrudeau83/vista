@@ -17,9 +17,21 @@ class SettingsRepository(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme_mode")
     private val use24HourKey = booleanPreferencesKey("use_24_hour_clock")
     private val screensaverClockKey = booleanPreferencesKey("screensaver_clock")
+    private val ambientFitKey = booleanPreferencesKey("ambient_fit_whole_image")
+    private val photoMotionKey = stringPreferencesKey("ambient_photo_motion")
+    private val ambientVideosKey = booleanPreferencesKey("ambient_include_videos")
 
     val use24Hour: Flow<Boolean> = context.settingsDataStore.data.map { it[use24HourKey] ?: false }
     val screensaverClock: Flow<Boolean> = context.settingsDataStore.data.map { it[screensaverClockKey] ?: true }
+    val ambientFit: Flow<Boolean> = context.settingsDataStore.data.map { it[ambientFitKey] ?: true }
+    val photoMotion: Flow<PhotoMotion> = context.settingsDataStore.data.map {
+        runCatching { PhotoMotion.valueOf(it[photoMotionKey].orEmpty()) }.getOrDefault(PhotoMotion.SUBTLE)
+    }
+    val ambientVideos: Flow<Boolean> = context.settingsDataStore.data.map { it[ambientVideosKey] ?: true }
+
+    suspend fun setAmbientFit(enabled: Boolean) { context.settingsDataStore.edit { it[ambientFitKey] = enabled } }
+    suspend fun setPhotoMotion(mode: PhotoMotion) { context.settingsDataStore.edit { it[photoMotionKey] = mode.name } }
+    suspend fun setAmbientVideos(enabled: Boolean) { context.settingsDataStore.edit { it[ambientVideosKey] = enabled } }
 
     suspend fun setUse24Hour(enabled: Boolean) {
         context.settingsDataStore.edit { it[use24HourKey] = enabled }

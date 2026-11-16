@@ -11,6 +11,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import androidx.tv.material3.ClickableSurfaceDefaults
+import dev.drewett.vista.ui.components.focusPop
 import coil.compose.AsyncImage
 import dev.drewett.vista.data.music.MusicHomeCard
 import dev.drewett.vista.data.music.MusicShelf
@@ -24,10 +26,10 @@ fun MusicHomeShelves(shelves:List<MusicShelf>,onClick:(MusicHomeCard)->Unit,modi
                 Text(shelf.title,style=MaterialTheme.typography.titleLarge)
                 LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp)) {
                     items(shelf.cards) { card ->
-                        Surface(onClick={onClick(card)},modifier=Modifier.width(170.dp)) {
+                        Surface(onClick={onClick(card)},modifier=Modifier.width(170.dp).focusPop(),scale=ClickableSurfaceDefaults.scale(focusedScale=1f)) {
                             Column(Modifier.padding(10.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                                 AsyncImage(card.thumbnail,null,modifier=Modifier.fillMaxWidth().aspectRatio(1f))
-                                Text(card.title,maxLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyLarge)
+                                Text(card.title,maxLines=2,minLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyLarge)
                             }
                         }
                     }
