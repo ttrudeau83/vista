@@ -66,7 +66,7 @@ https://github.com/sigma67/ytmusicapi/issues/921
 
 Run `scripts/Connect-MusicBrowser.ps1` under PowerShell 7 with the temporary
 diagnostic APK installed and the Onn paired over ADB. The helper listens only on
-127.0.0.1 with a random port and one-time route, a 20-minute expiry, same-origin
+127.0.0.1 with a random port and one-time route, a 60-minute expiry, same-origin
 POST enforcement, bounded input and no request-body logging or host session file.
 The helper page explains copying signed-in Music Request headers. Never paste
 those into chat, command arguments, tracked files or a public site.

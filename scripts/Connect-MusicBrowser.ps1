@@ -35,7 +35,7 @@ $token = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::G
 $nonce = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(18))
 $origin = "http://127.0.0.1:$port"
 $route = "/$token"
-$deadline = [DateTime]::UtcNow.AddMinutes(20)
+$deadline = [DateTime]::UtcNow.AddMinutes(60)
 $connected = $false
 $html = @'
 <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
