@@ -91,9 +91,10 @@ Backend authentication does not sign the embedded video player into Premium.
 Validation: 72 release unit tests pass, including raw/JSON/wrapped header parsing,
 hash vectors, injection/origin rejection, old vault compatibility, redaction and
 profile checks. The loopback helper returns 400 for cross-origin input; dummy
-same-origin input is rejected and its private TV import is removed. Live Music
-verification follows the user's local submission.
+same-origin input is rejected and its private TV import is removed. Live verification succeeded after the user's local submission: nine Music shelves,
+93 cards and a real mix containing 24 playable tracks. The active browser profile
+matched the previously authorized channel before encrypted persistence.
 Mix routing also handles watchPlaylistEndpoint, VL playlist IDs, seed videos and
 thumbnail overlays. Queue parsing skips unavailable tracks and video counterparts.
 Only the initial returned queue batch is loaded; queue continuation is not yet
-implemented. Live verification and release installation await local browser import.
+implemented. Live verification succeeded: nine shelves, 93 cards and 24 tracks in a returned mix.
