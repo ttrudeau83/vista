@@ -82,8 +82,13 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     val nuvioPackage = dev.drewett.vista.domain.PublishedContent.preferredNuvioPackage(apps.map { it.packageName })
     val nuvioApp = apps.firstOrNull { it.packageName == nuvioPackage }
     val smartTubeApp = apps.firstOrNull { dev.drewett.vista.domain.PublishedContent.isSmartTube(it.packageName) }
+    val youTubeApp = apps.firstOrNull { it.packageName == "com.google.android.youtube.tv" }
 
-    var tab by remember { mutableStateOf(VistaTab.FOR_YOU) }
+    var tab by remember { mutableStateOf(VistaTab.NUVIO) }
+    /** Nuvio is home: the shell fork at [route] ("home"/"profiles"), else the regular Nuvio app. */
+    fun openNuvio(route: String) {
+        if (!viewModel.openNuvioShell(route)) nuvioApp?.let(viewModel::launchSeamless)
+    }
     var searchOpen by remember { mutableStateOf(false) }
     var menuApp by remember { mutableStateOf<dev.drewett.vista.domain.AppEntry?>(null) }
     var musicAmbient by remember { mutableStateOf(false) }
@@ -129,6 +134,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
             searchOpen = false; panelReturnFocus.value = null; pendingReturnFocus = null
             tab = chosen
             if (chosen == VistaTab.FREEPLAY) openFreeplay() else panelEntry++
+            if (chosen == VistaTab.YOUTUBE_KIDS) youTubeApp?.let(viewModel::launch)
         }
     }
 
@@ -155,10 +161,15 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(resetSignal) {
-        if (resetSignal > 0) {
-            tab = VistaTab.FOR_YOU
+    // HOME (or a cold start without a requested tab) goes to Nuvio's home. One-shot, so a
+    // recreated activity never replays it.
+    val goNuvioHome by VistaSignals.goNuvioHome.collectAsStateWithLifecycle()
+    LaunchedEffect(goNuvioHome) {
+        if (goNuvioHome) {
+            VistaSignals.goNuvioHome.value = false
+            tab = VistaTab.NUVIO
             searchOpen = false
+            openNuvio("home")
         }
     }
 
@@ -166,23 +177,6 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     Box(Modifier.fillMaxSize().vistaBackdrop()) {
         Box(Modifier.fillMaxSize().padding(start=if(musicAmbient) 0.dp else 84.dp)) {
         when (tab) {
-            VistaTab.FOR_YOU ->
-                if (!loaded) Loading() else if (sections.isEmpty()) EmptyContent("No launchable apps or published content.") else HomeTab(
-                    sections = sections,
-                    favourites = favouritesSet,
-                    onLaunch = viewModel::launch,
-                    onLaunchContent = viewModel::launchContent,
-                    onAppLongPress = { menuApp = it },
-                    topBarFocus = topBarFocus,
-                    contentFocus = contentFocus,
-                    resetSignal = resetSignal,
-                    photo = photo,
-                    calendarPanel = {
-                        FamilyCalendarPanel(use24Hour = use24Hour,
-                            onOpen = { context.startActivity(android.content.Intent(context, dev.drewett.vista.FamilyCalendarActivity::class.java)) })
-                    },
-                )
-
             VistaTab.NUVIO -> Column(Modifier.fillMaxSize().padding(top=28.dp), verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Nuvio", Modifier.padding(start=48.dp), style=MaterialTheme.typography.headlineMedium)
                 Button(onClick={ nuvioApp?.let(viewModel::launch) }, enabled=nuvioApp!=null,
@@ -211,6 +205,15 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                     if (freeplayAvailable) Button(onClick = ::openFreeplay, modifier = Modifier.focusRequester(contentFocus)) {
                         Text("Open Freeplay")
                     }
+                }
+            }
+            VistaTab.YOUTUBE_KIDS -> Box(Modifier.fillMaxSize().padding(horizontal = 64.dp), contentAlignment = Alignment.CenterStart) {
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Text("YouTube Kids", style = MaterialTheme.typography.headlineLarge)
+                    Text(if (youTubeApp != null) "Opens YouTube on the TV for Ben's account."
+                        else "YouTube is not installed or is disabled.", style = MaterialTheme.typography.titleMedium)
+                    Button(onClick = { youTubeApp?.let(viewModel::launch) }, enabled = youTubeApp != null,
+                        modifier = Modifier.focusRequester(contentFocus).railBoundary()) { Text("Open YouTube") }
                 }
             }
             VistaTab.SMARTTUBE -> if (!loaded) Loading() else HomeTab(
@@ -253,9 +256,11 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 if(chosen!=tab) panelReturnFocus.value=null
                 searchOpen=false;tab=chosen
                 if(chosen==VistaTab.FREEPLAY) openFreeplay() else panelEntry++
-                if(chosen==VistaTab.NUVIO) nuvioApp?.let(viewModel::launchSeamless)
-            },onSearch={ searchOpen=true },onSettings=onOpenQuickSettings,
-            onFocus={ railFocused=it },use24Hour=use24Hour,modifier=Modifier.align(Alignment.CenterStart))
+                if(chosen==VistaTab.NUVIO) openNuvio("home")
+                if(chosen==VistaTab.YOUTUBE_KIDS) youTubeApp?.let(viewModel::launch)
+            },onSearch={ if(!viewModel.openNuvioShellSearch()) searchOpen=true },onSettings=onOpenQuickSettings,
+            onFocus={ railFocused=it },use24Hour=use24Hour,modifier=Modifier.align(Alignment.CenterStart),
+            onNuvioLongPress={ tab=VistaTab.NUVIO;openNuvio("profiles") })
         BackHandler(railFocused && !searchOpen && menuApp==null) { pendingReturnFocus=panelReturnFocus.value;panelEntry++ }
         AppContextMenu(
             app = menuApp,

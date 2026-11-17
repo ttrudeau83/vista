@@ -11,6 +11,8 @@ object PublishedContent {
 
     /** Our Vista-shell fork of NuvioTV (shares this rail). */
     const val NUVIO_SHELL_PACKAGE = "dev.drewett.vista.nuvio"
+    /** Extra asking the Nuvio shell to open "search" or its "profiles" picker; nothing else. */
+    const val EXTRA_NUVIO_ROUTE = "dev.drewett.vista.extra.NUVIO_ROUTE"
 
     /** The Vista-shell fork wins, then the official GitHub release, then the Play Store app. */
     fun preferredNuvioPackage(packageNames: List<String>): String? =

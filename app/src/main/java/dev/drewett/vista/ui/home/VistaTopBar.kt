@@ -51,7 +51,10 @@ import java.util.Date
 import java.util.Locale
 
 enum class VistaTab(val label: String,val icon:Int) {
-    FOR_YOU("For you",R.drawable.ic_nav_home), NUVIO("Nuvio",R.drawable.ic_nav_nuvio), MOVIES("Movies",R.drawable.ic_nav_movies), SHOWS("Shows",R.drawable.ic_nav_shows), SMARTTUBE("SmartTube",R.drawable.ic_nav_tube),
+    // Nuvio is home (2026-11-17): the former For you tab was removed.
+    NUVIO("Nuvio",R.drawable.ic_nav_home), MOVIES("Movies",R.drawable.ic_nav_movies), SHOWS("Shows",R.drawable.ic_nav_shows), SMARTTUBE("SmartTube",R.drawable.ic_nav_tube),
+    /** Opens the official YouTube app (Ben's account); SmartTube stays the parent's. */
+    YOUTUBE_KIDS("YouTube Kids",R.drawable.ic_nav_kids),
     MUSIC("Music",R.drawable.ic_nav_music), PHOTOS("Photos",R.drawable.ic_nav_photos), FREEPLAY("Freeplay",R.drawable.ic_nav_live), APPS("Apps",R.drawable.ic_nav_apps),
 }
 

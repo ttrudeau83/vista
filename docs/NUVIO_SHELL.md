@@ -19,16 +19,32 @@ screens appear beside Vista's rail without moving Nuvio's code into Vista.
   with extra `dev.drewett.vista.extra.TAB` (a `VistaTab` name) and no window
   animation. Vista enters that tab as if chosen in its own rail. Unknown names are
   ignored. Vista's Nuvio item launches the fork the same way.
+- **Search and profiles (0.5.1):** Search leads both rails and is Nuvio's search.
+  Vista's Search and Nuvio items open the fork with extra
+  `dev.drewett.vista.extra.NUVIO_ROUTE` = `search` or `profiles` (nothing else is
+  accepted). `profiles` shows Nuvio's profile picker when 2+ profiles exist. If the
+  fork is missing, Vista's own search and the regular Nuvio launch are used.
+- **Nuvio is home (0.6.0):** the For you tab is gone; the Nuvio item carries the home
+  icon. HOME, or a fresh Vista start without a requested tab, opens the fork with
+  route `home` (pops back to Nuvio's home). Long-press Nuvio in either sidebar
+  opens the profile picker. Movies/Shows titles open straight in the running fork
+  (its launcher activity receives the `nuvio://meta` link); the details dialog
+  appears only if that fails.
+- **YouTube Kids:** under SmartTube in both sidebars; opens the official YouTube app
+  (`com.google.android.youtube.tv`). YouTube offers no public way to preselect an
+  account, so it opens on its own "Who's watching?" with the last-used (Ben's) first.
 - **Preference:** Vista's Nuvio item, Continue Watching filter and Trakt title links
   prefer `dev.drewett.vista.nuvio`, then official `com.nuvio.tv`.
 
 ## Known limitations
 
-- Nuvio's official account server is not available to unofficial builds (Nuvio
-  ships its Supabase, TMDB and Trakt client keys only in official APKs). Without
-  them the fork works with locally added addons; Nuvio-account sync, TMDB
-  enrichment and Nuvio's own Trakt connection need keys supplied in the fork's
-  ignored `local.properties`.
+- Nuvio's source omits its account server settings. For the user's own sign-in,
+  the fork's ignored `local.properties` sets `NUVIO_SUPABASE_URL`
+  (`https://api.nuvio.tv`), `NUVIO_SUPABASE_FALLBACK_URL`, `AVATAR_PUBLIC_BASE_URL`
+  and the public `anon` key, read from the official app installed on the Onn.
+  QR sign-in works with them (2026-11-17). Never commit these values; re-read them
+  from the official APK if they change. TMDB and Nuvio's own Trakt client keys are
+  still unset.
 - Fork data is separate from official Nuvio; addons and settings are set up again.
 - The fork's rail clock is 12-hour and does not read Vista's clock setting.
 

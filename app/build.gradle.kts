@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 18
-        versionName = "0.5.0-nuvio-shell"
+        versionCode = 20
+        versionName = "0.6.0-nuvio-home"
     }
 
     buildTypes {

@@ -48,30 +48,37 @@ fun Modifier.railBoundary():Modifier {
 
 @Composable
 fun VistaNavigationRail(selected:VistaTab,railFocus:FocusRequester,onEnter:(VistaTab)->Unit,
-    onSearch:()->Unit,onSettings:()->Unit,onFocus:(Boolean)->Unit,use24Hour:Boolean,modifier:Modifier=Modifier) {
+    onSearch:()->Unit,onSettings:()->Unit,onFocus:(Boolean)->Unit,use24Hour:Boolean,modifier:Modifier=Modifier,
+    onNuvioLongPress:()->Unit={}) {
     var expanded by remember { mutableStateOf(false) }
-    var lastFocus by remember { mutableStateOf(selected.ordinal) }
+    // Search leads the rail (index 0), then the tabs, then Settings — same order as the Nuvio shell.
+    fun railIndex(tab:VistaTab)=tab.ordinal+1
+    var lastFocus by remember { mutableStateOf(railIndex(selected)) }
     // Tabs can change from outside the rail (e.g. chosen in the Nuvio shell's copy of it).
-    LaunchedEffect(selected) { lastFocus = selected.ordinal }
+    LaunchedEffect(selected) { lastFocus = railIndex(selected) }
     val itemFocus=remember { List(VistaTab.entries.size+2) { FocusRequester() } }
     val width by animateDpAsState(if(expanded) 224.dp else 84.dp,tween(180),label="navigation width")
-    val icons=VistaTab.entries.map { it.icon }+listOf(R.drawable.ic_search,R.drawable.ic_settings)
-    val labels=VistaTab.entries.map { it.label }+listOf("Search","Settings")
+    val icons=listOf(R.drawable.ic_search)+VistaTab.entries.map { it.icon }+listOf(R.drawable.ic_settings)
+    val labels=listOf("Search")+VistaTab.entries.map { it.label }+listOf("Settings")
     fun activate(index:Int) {
         when(index) {
-            VistaTab.entries.size -> onSearch()
+            0 -> onSearch()
             VistaTab.entries.size+1 -> onSettings()
-            else -> onEnter(VistaTab.entries[index])
+            else -> onEnter(VistaTab.entries[index-1])
         }
     }
     Column(modifier.width(width).fillMaxHeight().clipToBounds()
         .background(Brush.horizontalGradient(listOf(Color(0xFF0A1423),Color(0xF0141E30))))
-        .focusRequester(railFocus).onFocusChanged { expanded=it.hasFocus;onFocus(it.hasFocus) }
+        .focusRequester(railFocus).onFocusChanged {
+            // However the rail gains focus (even before its items attach at startup), land on the current tab.
+            if(it.hasFocus && !expanded) runCatching { itemFocus[lastFocus].requestFocus() }
+            expanded=it.hasFocus;onFocus(it.hasFocus) }
         .focusProperties { enter={ itemFocus[lastFocus] } }.focusGroup().padding(vertical=12.dp)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal=10.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
             labels.forEachIndexed { index,label ->
-                val isSelected=index==selected.ordinal
-                Surface(onClick={ activate(index) },modifier=Modifier.fillMaxWidth().height(42.dp).focusPop(focusedScale=1.025f)
+                val isSelected=index==railIndex(selected)
+                Surface(onClick={ activate(index) },
+                    onLongClick=if(index==railIndex(VistaTab.NUVIO)) onNuvioLongPress else null,modifier=Modifier.fillMaxWidth().height(42.dp).focusPop(focusedScale=1.025f)
                     .focusRequester(itemFocus[index]).onFocusChanged { if(it.isFocused) lastFocus=index }
                     .onPreviewKeyEvent { event ->
                         when(event.key) {

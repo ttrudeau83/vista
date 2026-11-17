@@ -15,5 +15,7 @@ object VistaSignals {
 
     /** Tab name requested by the Nuvio shell fork when the user picks a Vista rail item there. */
     val requestedTab = MutableStateFlow<String?>(null)
+    /** Set by HOME / a cold start; HomeScreen consumes it by opening Nuvio's home. */
+    val goNuvioHome = MutableStateFlow(false)
     const val EXTRA_TAB = "dev.drewett.vista.extra.TAB"
 }

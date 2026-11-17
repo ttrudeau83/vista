@@ -136,6 +136,11 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         appRepository.launch(entry)
     }
 
+    fun openNuvioShellSearch(): Boolean = appRepository.openNuvioShell("search")
+
+    /** [route]: "home", "search" or "profiles". */
+    fun openNuvioShell(route: String): Boolean = appRepository.openNuvioShell(route)
+
     fun launchSeamless(entry: AppEntry) {
         if (!appRepository.isPackageEnabled(entry.packageName)) { refresh(); return }
         viewModelScope.launch { launchHistoryRepository.record(entry.packageName) }

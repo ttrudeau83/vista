@@ -78,6 +78,33 @@ fun TraktLibraryPanel(
             )
         }
     }
+    /** Opens the title in the Vista-shell fork (same 1.1.0+ link parser), then official GitHub Nuvio. */
+    fun openTitleInNuvio(card: ContentCard): Boolean {
+        val uri = card.intentUri ?: return false
+        return listOf(dev.drewett.vista.domain.PublishedContent.NUVIO_SHELL_PACKAGE, "com.nuvio.tv").any { pkg ->
+            runCatching {
+                val info = context.packageManager.getPackageInfo(pkg, 0)
+                check(info.longVersionCode >= 1077)
+                val intent = if (pkg == dev.drewett.vista.domain.PublishedContent.NUVIO_SHELL_PACKAGE) {
+                    // Hand the link to the shell's running launcher activity (singleTop) so it opens in
+                    // the existing session instead of a second Nuvio screen with a new profile prompt.
+                    checkNotNull(context.packageManager.getLeanbackLaunchIntentForPackage(pkg))
+                        .setData(Uri.parse(uri))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                } else Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                    .setPackage(pkg).addCategory(Intent.CATEGORY_BROWSABLE)
+                check(intent.resolveActivity(context.packageManager) != null)
+                context.startActivity(intent, android.app.ActivityOptions.makeCustomAnimation(context, 0, 0).toBundle())
+            }.isSuccess
+        }
+    }
+    /** Selecting a title opens it in Nuvio directly; the details dialog only appears if that fails. */
+    fun onTitleSelected(card: ContentCard) {
+        if (openTitleInNuvio(card)) return
+        launchError = if (card.intentUri == null) null
+            else "Could not open this title. The GitHub version of Nuvio 1.1.0 or newer is required."
+        selected = card
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.padding(start = 48.dp, top = 24.dp, end = 48.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -93,7 +120,7 @@ fun TraktLibraryPanel(
             Text(state.message ?: "From your Trakt library", Modifier.padding(start = 48.dp, top = 10.dp),
                 style = MaterialTheme.typography.bodyMedium)
             val listName = state.lists.firstOrNull { it.id == state.selectedListId }?.name ?: "Watchlist"
-            ContentGrid("${if (movies) "Movies" else "Shows"} · $listName", cards, { launchError = null; selected = it },
+            ContentGrid("${if (movies) "Movies" else "Shows"} · $listName", cards, ::onTitleSelected,
                 modifier = Modifier.weight(1f),
                 onLongClick = { menuItem = it; menuListId = state.selectedListId; menuListName = listName; menuError = null },
                 emptyMessage = if (state.loading) "Loading your Trakt list…" else "No ${if (movies) "movies" else "shows"} in this Trakt list.")
@@ -116,17 +143,7 @@ fun TraktLibraryPanel(
                 Button(onClick = {
                     if (card.intentUri == null) { selected = null; onOpenNuvio() }
                     else {
-                        // Prefer the Vista-shell fork (same 1.1.0+ link parser), then official GitHub Nuvio.
-                        val opened = listOf(dev.drewett.vista.domain.PublishedContent.NUVIO_SHELL_PACKAGE, "com.nuvio.tv").any { pkg ->
-                            runCatching {
-                                val info = context.packageManager.getPackageInfo(pkg, 0)
-                                check(info.longVersionCode >= 1077)
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(card.intentUri))
-                                    .setPackage(pkg).addCategory(Intent.CATEGORY_BROWSABLE)
-                                check(intent.resolveActivity(context.packageManager) != null)
-                                context.startActivity(intent)
-                            }.isSuccess
-                        }
+                        val opened = openTitleInNuvio(card)
                         if (opened) selected = null
                         else launchError = "Could not open this title. The GitHub version of Nuvio 1.1.0 or newer is required."
                     }

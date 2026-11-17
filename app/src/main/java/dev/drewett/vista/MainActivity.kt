@@ -29,7 +29,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (savedInstanceState == null) intent?.getStringExtra(VistaSignals.EXTRA_TAB)?.let { VistaSignals.requestedTab.value = it }
+        if (savedInstanceState == null) {
+            val tab = intent?.getStringExtra(VistaSignals.EXTRA_TAB)
+            // Nuvio is home: a fresh start goes there unless the Nuvio shell asked for a Vista tab.
+            if (tab != null) VistaSignals.requestedTab.value = tab else VistaSignals.goNuvioHome.value = true
+        }
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
@@ -53,11 +57,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Pressing HOME while already home re-delivers the launch intent — reset to the top. */
+    /** HOME re-delivers the launch intent: go to Nuvio's home (or the tab the Nuvio shell asked for). */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         val tab = intent.getStringExtra(VistaSignals.EXTRA_TAB)
-        if (tab != null) VistaSignals.requestedTab.value = tab else VistaSignals.reset()
+        if (tab != null) VistaSignals.requestedTab.value = tab
+        else { VistaSignals.reset(); VistaSignals.goNuvioHome.value = true }
     }
 
     override fun onResume() {

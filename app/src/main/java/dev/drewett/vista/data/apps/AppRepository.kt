@@ -80,6 +80,21 @@ class AppRepository(private val context: Context) {
         runCatching { context.startActivity(intent, options) }
     }
 
+    /**
+     * Opens the Nuvio shell fork seamlessly at [route] ("search", or "profiles" for its profile
+     * picker). False when the fork is unavailable.
+     */
+    fun openNuvioShell(route: String): Boolean {
+        val pkg = dev.drewett.vista.domain.PublishedContent.NUVIO_SHELL_PACKAGE
+        if (!isPackageEnabled(pkg)) return false
+        val intent = (pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg)) ?: return false
+        // SINGLE_TOP delivers the extra to the fork's running main activity via onNewIntent.
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(dev.drewett.vista.domain.PublishedContent.EXTRA_NUVIO_ROUTE, route)
+        val options = android.app.ActivityOptions.makeCustomAnimation(context, 0, 0).toBundle()
+        return runCatching { context.startActivity(intent, options) }.isSuccess
+    }
+
     /** Includes enabled installed publishers even when they do not expose a launcher activity. */
     fun enabledPackages(): Set<String> = pm.getInstalledApplications(0)
         .filter { it.enabled && it.flags and ApplicationInfo.FLAG_INSTALLED != 0 }
