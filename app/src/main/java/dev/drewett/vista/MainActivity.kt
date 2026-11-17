@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) intent?.getStringExtra(VistaSignals.EXTRA_TAB)?.let { VistaSignals.requestedTab.value = it }
         setContent {
             val settingsViewModel: SettingsViewModel = viewModel()
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
@@ -55,7 +56,8 @@ class MainActivity : ComponentActivity() {
     /** Pressing HOME while already home re-delivers the launch intent — reset to the top. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        VistaSignals.reset()
+        val tab = intent.getStringExtra(VistaSignals.EXTRA_TAB)
+        if (tab != null) VistaSignals.requestedTab.value = tab else VistaSignals.reset()
     }
 
     override fun onResume() {

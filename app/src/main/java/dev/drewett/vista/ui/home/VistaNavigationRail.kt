@@ -51,6 +51,8 @@ fun VistaNavigationRail(selected:VistaTab,railFocus:FocusRequester,onEnter:(Vist
     onSearch:()->Unit,onSettings:()->Unit,onFocus:(Boolean)->Unit,use24Hour:Boolean,modifier:Modifier=Modifier) {
     var expanded by remember { mutableStateOf(false) }
     var lastFocus by remember { mutableStateOf(selected.ordinal) }
+    // Tabs can change from outside the rail (e.g. chosen in the Nuvio shell's copy of it).
+    LaunchedEffect(selected) { lastFocus = selected.ordinal }
     val itemFocus=remember { List(VistaTab.entries.size+2) { FocusRequester() } }
     val width by animateDpAsState(if(expanded) 224.dp else 84.dp,tween(180),label="navigation width")
     val icons=VistaTab.entries.map { it.icon }+listOf(R.drawable.ic_search,R.drawable.ic_settings)

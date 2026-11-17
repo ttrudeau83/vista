@@ -136,6 +136,12 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         appRepository.launch(entry)
     }
 
+    fun launchSeamless(entry: AppEntry) {
+        if (!appRepository.isPackageEnabled(entry.packageName)) { refresh(); return }
+        viewModelScope.launch { launchHistoryRepository.record(entry.packageName) }
+        appRepository.launch(entry, seamless = true)
+    }
+
     fun launchContent(card: ContentCard) {
         if (card.packageName?.let { appRepository.isPackageEnabled(it) } != true) { refresh(); return }
         card.packageName?.let { pkg -> viewModelScope.launch { launchHistoryRepository.record(pkg) } }

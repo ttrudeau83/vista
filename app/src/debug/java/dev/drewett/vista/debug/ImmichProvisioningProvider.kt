@@ -44,6 +44,34 @@ class ImmichProvisioningProvider : ContentProvider() {
                     dev.drewett.vista.data.music.MusicRepository.get(requireNotNull(context)).saveClient(requireNotNull(arg), requireNotNull(extras?.getString("secret")))
                     Bundle().apply { putString("status", "OAuth client saved") }
                 }
+                "traktClient" -> {
+                    dev.drewett.vista.data.trakt.TraktRepository.get(requireNotNull(context))
+                        .saveClient(requireNotNull(arg), extras?.getString("secret").orEmpty())
+                    Bundle().apply { putString("status", "Trakt client saved") }
+                }
+                "traktSignIn" -> {
+                    val trakt = dev.drewett.vista.data.trakt.TraktRepository.get(requireNotNull(context))
+                    trakt.startSignIn()
+                    Bundle().apply {
+                        putString("code", trakt.state.value.pairing?.userCode)
+                        putString("verificationUrl", trakt.state.value.pairing?.verificationUrl)
+                    }
+                }
+                "traktStatus" -> {
+                    val trakt = dev.drewett.vista.data.trakt.TraktRepository.get(requireNotNull(context))
+                    if (arg == "refresh") trakt.refreshLibrary(force = true)
+                    val current = trakt.state.value
+                    Bundle().apply {
+                        putBoolean("authorized", current.authorized)
+                        putBoolean("configured", current.clientConfigured)
+                        putBoolean("loading", current.loading)
+                        putInt("movies", current.items.count { it.type == "movie" })
+                        putInt("shows", current.items.count { it.type == "show" })
+                        putInt("lists", current.lists.size)
+                        putInt("posters", current.items.count { it.posterUrl != null })
+                        putString("status", current.message)
+                    }
+                }
                 "musicSignIn" -> {
                     val music = dev.drewett.vista.data.music.MusicRepository.get(requireNotNull(context))
                     music.startSignIn()

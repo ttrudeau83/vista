@@ -9,6 +9,14 @@ object PublishedContent {
 
     fun isSmartTube(packageName: String?) = packageName != null && packageName in smartTubePackages
 
+    /** Our Vista-shell fork of NuvioTV (shares this rail). */
+    const val NUVIO_SHELL_PACKAGE = "dev.drewett.vista.nuvio"
+
+    /** The Vista-shell fork wins, then the official GitHub release, then the Play Store app. */
+    fun preferredNuvioPackage(packageNames: List<String>): String? =
+        listOf(NUVIO_SHELL_PACKAGE, "com.nuvio.tv", "com.nuvio.app").firstOrNull { it in packageNames }
+            ?: packageNames.firstOrNull { it.contains("nuvio", ignoreCase = true) }
+
     fun isContinueWatchingChannel(name: String?): Boolean = name?.lowercase(Locale.ROOT)?.let {
         it.contains("continue watching") || it.contains("watch next") || it == "resume"
     } == true

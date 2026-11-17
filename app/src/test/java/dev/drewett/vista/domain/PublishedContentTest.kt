@@ -3,9 +3,26 @@ package dev.drewett.vista.domain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class PublishedContentTest {
+    @Test fun githubNuvioTakesPrecedenceWhenBothOfficialAppsAreInstalled() {
+        assertEquals("com.nuvio.tv", PublishedContent.preferredNuvioPackage(listOf("com.nuvio.app", "com.nuvio.tv")))
+        assertEquals("com.nuvio.tv", PublishedContent.preferredNuvioPackage(listOf("com.nuvio.tv", "com.nuvio.app")))
+    }
+
+    @Test fun vistaShellForkTakesPrecedenceOverOfficialNuvio() {
+        assertEquals(PublishedContent.NUVIO_SHELL_PACKAGE,
+            PublishedContent.preferredNuvioPackage(listOf("com.nuvio.tv", PublishedContent.NUVIO_SHELL_PACKAGE, "com.nuvio.app")))
+    }
+
+    @Test fun nuvioShortcutFallsBackToRemainingInstallation() {
+        assertEquals("com.nuvio.app", PublishedContent.preferredNuvioPackage(listOf("com.nuvio.app")))
+        assertEquals("com.nuviodebug.com", PublishedContent.preferredNuvioPackage(listOf("com.nuviodebug.com")))
+        assertNull(PublishedContent.preferredNuvioPackage(listOf("other.app")))
+    }
+
     @Test fun uninstallOrDisableRemovesAllPublisherRows() {
         val cards = listOf(card("removed.app"), card("enabled.app"), card(null))
         assertEquals(listOf("enabled.app"), PublishedContent.available(cards, setOf("enabled.app")).map { it.packageName })

@@ -149,6 +149,9 @@ private fun PanelContent(
         Tile("Music account", "Connect", R.drawable.ic_audio, Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, dev.drewett.vista.MusicSettingsActivity::class.java))
         }
+        Tile("Trakt account", "Movies & Shows", R.drawable.ic_display, Modifier.fillMaxWidth()) {
+            context.startActivity(Intent(context, dev.drewett.vista.TraktSettingsActivity::class.java))
+        }
         Tile("Start photo screensaver", "Keep music playing", R.drawable.ic_screensaver, Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, dev.drewett.vista.PhotoSlideshowActivity::class.java))
         }

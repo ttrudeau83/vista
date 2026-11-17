@@ -68,14 +68,16 @@ class AppRepository(private val context: Context) {
     }
 
     /** Launch an app via its resolved component. */
-    fun launch(entry: AppEntry) {
+    /** [seamless] suppresses the window transition, used when the Nuvio shell continues our rail. */
+    fun launch(entry: AppEntry, seamless: Boolean = false) {
         if (!isPackageEnabled(entry.packageName)) return
         val intent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(if (entry.isLeanback) Intent.CATEGORY_LEANBACK_LAUNCHER else Intent.CATEGORY_LAUNCHER)
             component = entry.componentName
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
         }
-        runCatching { context.startActivity(intent) }
+        val options = if (seamless) android.app.ActivityOptions.makeCustomAnimation(context, 0, 0).toBundle() else null
+        runCatching { context.startActivity(intent, options) }
     }
 
     /** Includes enabled installed publishers even when they do not expose a launcher activity. */

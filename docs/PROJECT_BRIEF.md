@@ -121,6 +121,20 @@ Stop after this investigation and report. Do not begin implementing later milest
 
 ## Acceptance criteria
 
+User-approved maintenance scope (2026-11-17): fix full poster/title visibility in
+Movies/Shows, link selected Trakt titles into Nuvio, and add an explicit long-press
+Remove action for the selected Trakt Watchlist/custom list. Public Nuvio VIEW
+links may be used where verified against its installed manifest and upstream
+parser tests; never guess private extras. Assess a native Nuvio fork separately;
+this approval does not authorize merging GPL code into Vista or changing its license.
+
+User-approved milestone (2026-11-17): the Nuvio shell fork (Option B in
+`docs/NATIVE_NUVIO_OPTIONS.md`). Fork NuvioTV 1.1.0 into the sibling repository
+`../nuvio-vista` (GPL-3.0, separate package `dev.drewett.vista.nuvio`, own signing
+key) and replace its sidebar with a copy of Vista's rail. Vista stays MIT and only
+exchanges explicit intents with the fork. The user approved removing the Play Store
+Nuvio (`com.nuvio.app`) from the Onn; this was done over ADB on 2026-11-17.
+
 Current approved milestone (2026-11-15): implement the Immich single-photo
 background proof of concept with TV settings, API-key authentication, album
 selection, crop/fit and offline cached fallback. The user chose to proceed with

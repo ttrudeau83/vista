@@ -79,7 +79,8 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     val movies by viewModel.movies.collectAsStateWithLifecycle()
     val shows by viewModel.shows.collectAsStateWithLifecycle()
     val allContent by viewModel.allContent.collectAsStateWithLifecycle()
-    val nuvioApp = apps.firstOrNull { it.packageName.contains("nuvio", ignoreCase = true) }
+    val nuvioPackage = dev.drewett.vista.domain.PublishedContent.preferredNuvioPackage(apps.map { it.packageName })
+    val nuvioApp = apps.firstOrNull { it.packageName == nuvioPackage }
     val smartTubeApp = apps.firstOrNull { dev.drewett.vista.domain.PublishedContent.isSmartTube(it.packageName) }
 
     var tab by remember { mutableStateOf(VistaTab.FOR_YOU) }
@@ -104,6 +105,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     BackHandler(!railFocused && !musicAmbient && !searchOpen && menuApp==null) { runCatching { topBarFocus.requestFocus() } }
     val resetSignal by VistaSignals.reset.collectAsStateWithLifecycle()
     val refreshSignal by VistaSignals.refresh.collectAsStateWithLifecycle()
+    val requestedTab by VistaSignals.requestedTab.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
     val freeplayIntent = remember(context) {
         Intent(Intent.ACTION_VIEW, Uri.parse("https://tv.google.com/freeplay/"))
@@ -116,6 +118,17 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
         runCatching { context.startActivity(freeplayIntent) }.onFailure {
             GoogleTvLaunchSession.finish()
             freeplayError = "Freeplay could not open. Check that Google TV is enabled and up to date."
+        }
+    }
+
+    // The Nuvio shell's rail hands Vista items back here; behave as if chosen in our rail.
+    LaunchedEffect(requestedTab) {
+        val chosen = requestedTab?.let { name -> VistaTab.entries.firstOrNull { it.name == name } }
+        VistaSignals.requestedTab.value = null
+        if (chosen != null && chosen != VistaTab.NUVIO) {
+            searchOpen = false; panelReturnFocus.value = null; pendingReturnFocus = null
+            tab = chosen
+            if (chosen == VistaTab.FREEPLAY) openFreeplay() else panelEntry++
         }
     }
 
@@ -177,8 +190,10 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 ContentGrid("From Nuvio", allContent.filter { it.packageName==nuvioApp?.packageName }, viewModel::launchContent,
                     modifier=Modifier.weight(1f), emptyMessage="Open Nuvio to browse its catalog.")
             }
-            VistaTab.MOVIES -> ContentGrid("Movies", movies, viewModel::launchContent, contentFocus = contentFocus)
-            VistaTab.SHOWS -> ContentGrid("Shows", shows, viewModel::launchContent, contentFocus = contentFocus)
+            VistaTab.MOVIES -> TraktLibraryPanel(true, movies, viewModel::launchContent, contentFocus,
+                nuvioApp != null, { nuvioApp?.let(viewModel::launch) })
+            VistaTab.SHOWS -> TraktLibraryPanel(false, shows, viewModel::launchContent, contentFocus,
+                nuvioApp != null, { nuvioApp?.let(viewModel::launch) })
             VistaTab.APPS -> if (!loaded) Loading() else AppsScreen(
                 apps = apps,
                 onLaunch = viewModel::launch,
@@ -238,7 +253,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 if(chosen!=tab) panelReturnFocus.value=null
                 searchOpen=false;tab=chosen
                 if(chosen==VistaTab.FREEPLAY) openFreeplay() else panelEntry++
-                if(chosen==VistaTab.NUVIO) nuvioApp?.let(viewModel::launch)
+                if(chosen==VistaTab.NUVIO) nuvioApp?.let(viewModel::launchSeamless)
             },onSearch={ searchOpen=true },onSettings=onOpenQuickSettings,
             onFocus={ railFocused=it },use24Hour=use24Hour,modifier=Modifier.align(Alignment.CenterStart))
         BackHandler(railFocused && !searchOpen && menuApp==null) { pendingReturnFocus=panelReturnFocus.value;panelEntry++ }

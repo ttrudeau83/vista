@@ -1,6 +1,9 @@
 package dev.drewett.vista.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,9 +15,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import dev.drewett.vista.ui.home.panelFocus
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -31,6 +41,7 @@ import androidx.tv.material3.Text
 private val CardShape = RoundedCornerShape(14.dp)
 
 /** Content tile: thumbnail (framed by the row's focus ring) with the full title wrapping below. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ContentCardView(
     card: ContentCard,
@@ -38,11 +49,26 @@ fun ContentCardView(
     modifier: Modifier = Modifier,
     flatFocus: Boolean = false,
     aspectRatio: Float = 16f / 9f,
+    onLongClick: (() -> Unit)? = null,
+    keepWholeCardVisible: Boolean = false,
 ) {
-    Column(modifier.panelFocus()) {
+    val fullCard = remember { BringIntoViewRequester() }
+    var focused by remember { mutableStateOf(false) }
+    // Surface's focus target includes only the image. Request the outer bounds after its
+    // own focus scroll so the title and metadata below the image also stay in view.
+    LaunchedEffect(focused, keepWholeCardVisible) {
+        if (focused && keepWholeCardVisible) {
+            withFrameNanos { }
+            fullCard.bringIntoView()
+        }
+    }
+    Column(modifier.panelFocus().bringIntoViewRequester(fullCard).onFocusChanged { focused = it.hasFocus }) {
         Surface(
             onClick = onClick,
-            modifier = Modifier.focusPop(enabled = !flatFocus, shape = CardShape).fillMaxWidth().aspectRatio(aspectRatio),
+            onLongClick = onLongClick,
+            modifier = Modifier.focusPop(enabled = !flatFocus, shape = CardShape)
+                .then(if (onLongClick != null) Modifier.appActivationKeys(onClick, onLongClick) else Modifier)
+                .fillMaxWidth().aspectRatio(aspectRatio),
             shape = ClickableSurfaceDefaults.shape(CardShape),
             // flatFocus = no scale (the row slides under a pinned ring); both show the ring border.
             scale = ClickableSurfaceDefaults.scale(focusedScale = 1f),
@@ -116,7 +142,7 @@ fun ContentCardView(
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 2,
-            minLines = if(flatFocus) 2 else 1,
+            minLines = if (flatFocus || keepWholeCardVisible) 2 else 1,
             modifier = Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp),
         )
         val meta = card.episodeLabel ?: card.timeLeftLabel
