@@ -19,6 +19,10 @@ data class MusicState(
     val tracks: List<MusicTrack> = emptyList(),
     val shelves: List<MusicShelf> = emptyList(),
     val artists: List<MusicHomeCard> = emptyList(),
+    /** Recently played (Music history), newest first. */
+    val history: List<MusicTrack> = emptyList(),
+    /** Saved podcasts from the Music library. */
+    val podcasts: List<MusicHomeCard> = emptyList(),
     val homeMessage: String? = null,
     val browserConnected:Boolean = false,
     val browserProfile:String? = null,

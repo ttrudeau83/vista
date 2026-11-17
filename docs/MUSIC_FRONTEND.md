@@ -98,3 +98,40 @@ Mix routing also handles watchPlaylistEndpoint, VL playlist IDs, seed videos and
 thumbnail overlays. Queue parsing skips unavailable tracks and video counterparts.
 Only the initial returned queue batch is loaded; queue continuation is not yet
 implemented. Live verification succeeded: nine shelves, 93 cards and 24 tracks in a returned mix.
+
+## History, podcasts and layout (0.6.1, 2026-11-17)
+
+Music home is a list of labelled rows: Recently played (`FEmusic_history`), the
+first personal mix shelf, Podcasts (`FEmusic_library_non_music_audio_list`, only
+`MPSP…` podcast pages), channels & artists, the remaining Music shelves, and a
+footer with Refresh/Settings. Library shows playlists, podcasts, history and
+artists. Podcast pages list episodes (`musicMultiRowListItemRenderer`, video ID
+under `onTap.watchEndpoint`). Header actions (Play my mix, Library, History,
+Open YouTube Music, Photos, settings) scroll sideways so they never clip beside
+the live player. Up/Down moves row to row; Back restores the previous row.
+"Open YouTube Music" launches `com.google.android.youtube.tvmusic` directly.
+
+History and podcasts need a signed-in Music browser session. On 2026-11-17 the
+stored session had expired (`account_menu` returned no profile; history replied
+"Sign in to view your history"), so both rows were hidden and the screen now says
+the sign-in expired. Re-run the browser connection (needs PowerShell 7 and the
+diagnostic build) to restore them. Sending `onBehalfOfUser` with the brand page
+ID was tried and rejected by Music, so it is not used. Logcat tag `VistaMusic`
+records only counts, error types, renderer names and Music's own UI message.
+
+## Keeping the Music sign-in alive (0.6.2, 2026-11-17)
+
+The browser session was reconnected on 2026-11-17 (history 100 items, 7 podcasts,
+`account_menu` signed in). To keep it from going stale, Vista now applies
+YouTube Music's own `Set-Cookie` renewals to the stored session, as a browser
+would: only cookies already in the session are updated; new names and deletions
+are ignored; the import candidate is never modified; renewals are re-encrypted in
+the vault. A keep-alive calls `account_menu` one minute after start and every six
+hours while Vista runs, and shows the "sign-in expired" message if Google ended
+the session. Late-loading rows no longer hide above the visible list.
+
+Google can still end a copied session (sign-out in the source browser, "sign out
+of all devices", password change, security checks). Chrome's device-bound session
+cookies may age copied sessions faster. Copy from a Firefox private window when
+possible, and close it without signing out. Reconnecting needs PowerShell 7
+(installed via winget on 2026-11-17) and the diagnostic build, then the release.

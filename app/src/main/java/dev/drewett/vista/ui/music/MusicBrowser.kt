@@ -5,6 +5,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
@@ -47,6 +49,11 @@ internal class MusicBrowserState {
     val focusSection=mutableStateOf(0)
 }
 
+/** One horizontal row on the Music home/library; [first] goes on its first item (focus target + rail edge). */
+private class MusicRow(val key:String,val title:String,val subtitle:String?=null,val content:@Composable (first:Modifier)->Unit)
+
+private const val YOUTUBE_MUSIC_PACKAGE="com.google.android.youtube.tvmusic"
+
 /** Browsing has its own history; opening another playlist never replaces the playing queue. */
 @Composable
 internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPlayer:Boolean,
@@ -59,23 +66,33 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
     val history=navigation.history
     val rows=navigation.rows
     val heroFocus=contentFocus
-    val playlistFocus=remember { FocusRequester() }
-    val channelFocus=remember { FocusRequester() }
+    val trackFocus=remember { FocusRequester() }
     val scope=rememberCoroutineScope()
+    // 0 = header buttons, n = row n-1 (or the track list on a detail page).
     var focusSection by navigation.focusSection
     var openQueueObserved by remember { mutableStateOf(queueRequest) }
+    val rowFocusHolder=remember { mutableStateOf<List<FocusRequester>>(emptyList()) }
+    val youTubeMusic=remember { context.packageManager.getLeanbackLaunchIntentForPackage(YOUTUBE_MUSIC_PACKAGE)
+        ?: context.packageManager.getLaunchIntentForPackage(YOUTUBE_MUSIC_PACKAGE) }
+    LaunchedEffect(Unit) { model.refreshPersonal() }
+
+    val detail=location.page==MusicPage.DETAIL || location.page==MusicPage.QUEUE
+    fun focusContent(section:Int,isDetail:Boolean) {
+        scope.launch {
+            if(section>0) rows.scrollToItem(if(isDetail) 0 else section-1)
+            withFrameNanos { }
+            val target=if(section<=0) heroFocus else if(isDetail) trackFocus else rowFocusHolder.value.getOrNull(section-1)
+            runCatching { (target ?: heroFocus).requestFocus() }
+        }
+    }
     fun navigate(next:MusicLocation) {
-        history.add(location.copy(returnSection=focusSection));location=next;focusSection=0
-        scope.launch { rows.scrollToItem(0);withFrameNanos { };runCatching { playlistFocus.requestFocus() } }
+        history.add(location.copy(returnSection=focusSection));location=next;focusSection=1
+        focusContent(1,next.page==MusicPage.DETAIL || next.page==MusicPage.QUEUE)
     }
     fun back() {
-        if(history.isNotEmpty()) location=history.removeAt(history.lastIndex)
-        else location=MusicLocation()
-        val section=location.returnSection
-        scope.launch {
-            rows.scrollToItem(if(section==2) 1 else 0);withFrameNanos { }
-            runCatching { (if(section==2) channelFocus else if(section==1) playlistFocus else heroFocus).requestFocus() }
-        }
+        location=if(history.isNotEmpty()) history.removeAt(history.lastIndex) else MusicLocation()
+        focusSection=location.returnSection
+        focusContent(location.returnSection,location.page==MusicPage.DETAIL || location.page==MusicPage.QUEUE)
     }
     BackHandler(true) {
         if(focusSection!=0 && location.page==MusicPage.HOME && history.isEmpty()) {
@@ -86,7 +103,6 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
         if(queueRequest!=openQueueObserved && queue.isNotEmpty()) {
             openQueueObserved=queueRequest
             navigate(MusicLocation(MusicPage.QUEUE,"Playing queue",tracks=queue))
-            rows.scrollToItem(0)
         }
     }
     fun openCard(card:MusicHomeCard,playAll:Boolean=false) {
@@ -101,6 +117,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
             } else if(loaded.shelves.isNotEmpty()) navigate(MusicLocation(title=card.title,image=card.thumbnail,shelves=loaded.shelves))
         }
     }
+    fun openYouTubeMusic() { youTubeMusic?.let { runCatching { context.startActivity(Intent(it).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } } }
     fun sectionKeys(down:Pair<Int,FocusRequester>?,up:Pair<Int,FocusRequester>?):Modifier = Modifier.onPreviewKeyEvent { event ->
         val target=when(event.key) { Key.DirectionDown -> down;Key.DirectionUp -> up;else -> null }
         if(target==null) false else {
@@ -112,108 +129,173 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
             true
         }
     }
+
+    val nested=location.page==MusicPage.HOME && location.shelves.isNotEmpty()
     val shelves=location.shelves.ifEmpty { state.shelves }
     val featured=shelves.flatMap { it.cards }.firstOrNull { it.playlistId!=null || it.browseId?.startsWith("VL")==true }
     val firstShelf=shelves.firstOrNull { shelf -> shelf.cards.any { it.browseId?.startsWith("UC")!=true } }
     val channels=(state.artists+shelves.flatMap { it.cards }.filter { it.browseId?.startsWith("UC")==true }).distinctBy { it.browseId }
-    val detail=location.page==MusicPage.DETAIL || location.page==MusicPage.QUEUE
     val detailTracks=if(location.page==MusicPage.QUEUE) queue else location.tracks
-    Column(Modifier.fillMaxSize().padding(start=36.dp,end=36.dp,top=28.dp,bottom=if(hasPlayer) 82.dp else 22.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth().height(134.dp),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
-            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    MusicIcon(R.drawable.ic_nav_music,"",22)
-                    Text("YouTube Music",style=MaterialTheme.typography.titleMedium)
-                    Text(state.browserProfile ?: state.channel?.title.orEmpty(),color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f),style=MaterialTheme.typography.labelSmall,maxLines=1)
+    val profile=state.browserProfile ?: state.channel?.title.orEmpty()
+
+    @Composable fun cardRow(cards:List<MusicHomeCard>,subtitle:String,first:Modifier) {
+        LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
+            itemsIndexed(cards,key={ index,c -> "${c.browseId}:${c.playlistId}:${c.videoId}:$index" }) { index,c ->
+                MusicArtwork(c.title,c.thumbnail,subtitle,if(index==0) first else Modifier) { openCard(c) }
+            }
+        }
+    }
+    val playlistsRow=MusicRow("playlists","Your playlists","${state.playlists.size} playlists") { first ->
+        LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
+            itemsIndexed(state.playlists,key={ _,p -> p.id }) { index,p ->
+                MusicArtwork(p.title,p.thumbnail,"${p.count} tracks",if(index==0) first else Modifier) {
+                    model.playlist(p) { loaded -> navigate(MusicLocation(MusicPage.DETAIL,p.title,p.thumbnail,tracks=loaded.tracks)) }
                 }
-                Text(if(detail) location.title else location.title.ifBlank { "Your music. Your way." },style=MaterialTheme.typography.headlineMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
-                Text(if(detail) "${detailTracks.size} tracks · Select a track to play" else "Your mixes, playlists and channels, all in one place.",color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f),style=MaterialTheme.typography.bodyMedium)
-                Row(Modifier.focusRequester(heroFocus).focusGroup().then(sectionKeys(0 to playlistFocus,null)).onFocusChanged { if(it.hasFocus) focusSection=0 },horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            }
+            if(state.playlists.isEmpty()) item { Button(onClick=model::refresh,enabled=!busy,modifier=first) { Text("Refresh library") } }
+        }
+    }
+    val historyRow=MusicRow("history","Recently played","Pick up where you left off") { first ->
+        LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
+            itemsIndexed(state.history.take(30),key={ index,t -> "${t.id}:$index" }) { index,t ->
+                MusicArtwork(t.title,t.thumbnail,if(queue.getOrNull(queueIndex)?.id==t.id) "Now playing" else "Played recently",if(index==0) first else Modifier) { onPlay(state.history,index) }
+            }
+            item(key="history-all") { MoreTile("All history") { navigate(MusicLocation(MusicPage.DETAIL,"Recently played",tracks=state.history)) } }
+        }
+    }
+    val podcastsRow=MusicRow("podcasts","Podcasts","Saved in your library") { first -> cardRow(state.podcasts,"Podcast",first) }
+    val channelsRow=MusicRow("channels","Your channels & artists") { first ->
+        LazyRow(horizontalArrangement=Arrangement.spacedBy(22.dp),contentPadding=PaddingValues(6.dp)) {
+            itemsIndexed(channels,key={ index,c -> "${c.browseId}:$index" }) { index,c ->
+                Column(Modifier.width(96.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                    Surface(onClick={ openCard(c) },modifier=Modifier.panelFocus().size(76.dp).focusPop(shape=CircleShape).then(if(index==0) first else Modifier),
+                        shape=ClickableSurfaceDefaults.shape(CircleShape),scale=ClickableSurfaceDefaults.scale(focusedScale=1f)) {
+                        AsyncImage(c.thumbnail,c.title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+                    }
+                    Text(c.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.labelMedium)
+                }
+            }
+            if(channels.isEmpty()) item { Button(onClick=model::refresh,enabled=!busy,modifier=first) { Text("Refresh channels") } }
+        }
+    }
+    val footerRow=MusicRow("footer","More") { first ->
+        Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            Button(onClick=model::refresh,enabled=!busy,modifier=first) { Text("Refresh Music") }
+            Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { Text("Music settings") }
+        }
+    }
+    val sections:List<MusicRow> = when {
+        detail -> emptyList()
+        nested -> shelves.map { shelf -> MusicRow("shelf:"+shelf.title,shelf.title) { first -> cardRow(shelf.cards,"YouTube Music",first) } }
+        location.page==MusicPage.LIBRARY -> buildList {
+            add(playlistsRow)
+            if(state.podcasts.isNotEmpty()) add(podcastsRow)
+            if(state.history.isNotEmpty()) add(historyRow)
+            add(channelsRow)
+        }
+        else -> buildList {
+            if(state.history.isNotEmpty()) add(historyRow)
+            if(firstShelf!=null) add(MusicRow("mixes",firstShelf.title,"Made for you") { first -> cardRow(firstShelf.cards,"Mix · Playlist",first) })
+            else add(playlistsRow)
+            if(state.podcasts.isNotEmpty()) add(podcastsRow)
+            add(channelsRow)
+            shelves.filter { it!==firstShelf }.forEach { shelf -> add(MusicRow("shelf:"+shelf.title,shelf.title) { first -> cardRow(shelf.cards,"YouTube Music",first) }) }
+            add(footerRow)
+        }
+    }
+    val rowFocus=remember(sections.map { it.key }) { List(sections.size) { FocusRequester() } }
+    rowFocusHolder.value=rowFocus
+    // Rows that load late (history, podcasts) insert above the visible ones; LazyColumn would keep the old
+    // first row pinned and hide the new one. While the header has focus, show the list from its top.
+    LaunchedEffect(sections.firstOrNull()?.key) { if(focusSection==0 && !detail) rows.scrollToItem(0) }
+
+    Column(Modifier.fillMaxSize().padding(start=36.dp,end=36.dp,top=28.dp,bottom=if(hasPlayer) 82.dp else 22.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().height(140.dp),horizontalArrangement=Arrangement.spacedBy(24.dp)) {
+            Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    MusicIcon(R.drawable.ic_nav_music,"",20)
+                    Text("YouTube Music",style=MaterialTheme.typography.titleSmall)
+                    if(profile.isNotBlank()) Text("· $profile",color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f),style=MaterialTheme.typography.labelMedium,maxLines=1)
+                }
+                Text(when { detail || nested -> location.title; location.page==MusicPage.LIBRARY -> "Your library"; else -> "Music" },
+                    style=MaterialTheme.typography.headlineMedium,maxLines=1,overflow=TextOverflow.Ellipsis)
+                Text(when {
+                        detail -> "${detailTracks.size} ${if(detailTracks.size==1) "track" else "tracks"} · Select one to play from there"
+                        location.page==MusicPage.LIBRARY -> "Playlists, podcasts, history and artists"
+                        nested -> "From YouTube Music"
+                        else -> "Your history, mixes, podcasts and artists"
+                    },color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f),style=MaterialTheme.typography.bodyMedium,maxLines=1)
+                // Header actions scroll sideways (focus brings each into view) so they never clip beside the player.
+                Row(Modifier.focusRequester(heroFocus).focusGroup().horizontalScroll(rememberScrollState())
+                    .then(sectionKeys(0 to (if(detail) trackFocus else rowFocus.firstOrNull() ?: heroFocus),null))
+                    .onFocusChanged { if(it.hasFocus) focusSection=0 },horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     Button(onClick={
                         if(detail && detailTracks.isNotEmpty()) onPlay(detailTracks,0)
                         else featured?.let { openCard(it,true) } ?: state.playlists.firstOrNull()?.let { playlist -> model.playlist(playlist) { onPlay(it.tracks,0) } }
                     },enabled=!busy && (detailTracks.isNotEmpty() || featured!=null || state.playlists.isNotEmpty()),modifier=Modifier.railBoundary()) {
                         MusicIcon(R.drawable.ic_media_play,"",18);Spacer(Modifier.width(6.dp));Text(if(detail) "Play all" else "Play my mix")
                     }
-                    Button(onClick={ navigate(MusicLocation(MusicPage.LIBRARY,"Your library")) }) { MusicIcon(R.drawable.ic_nav_apps,"",18);Spacer(Modifier.width(6.dp));Text("Browse library") }
+                    if(location.page!=MusicPage.LIBRARY) Button(onClick={ navigate(MusicLocation(MusicPage.LIBRARY,"Your library")) }) { MusicIcon(R.drawable.ic_nav_apps,"",18);Spacer(Modifier.width(6.dp));Text("Library") }
+                    if(state.history.isNotEmpty() && location.tracks!==state.history) Button(onClick={ navigate(MusicLocation(MusicPage.DETAIL,"Recently played",tracks=state.history)) }) {
+                        MusicIcon(R.drawable.ic_media_queue,"",18);Spacer(Modifier.width(6.dp));Text("History") }
+                    if(youTubeMusic!=null) Button(onClick=::openYouTubeMusic) { MusicIcon(R.drawable.ic_nav_music,"",18);Spacer(Modifier.width(6.dp));Text("Open YouTube Music") }
                     Button(onClick=onPhotos) { MusicIcon(R.drawable.ic_nav_photos,"",18);Spacer(Modifier.width(6.dp));Text("Photos") }
-                    if(!hasPlayer) Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { MusicIcon(R.drawable.ic_settings,"Music settings",18) }
+                    Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { MusicIcon(R.drawable.ic_settings,"Music settings",18) }
                 }
             }
             // A stable space for the live player. The WebView itself lives outside this scrollable browser.
             if(hasPlayer) Spacer(Modifier.width(280.dp))
             else Box(Modifier.width(228.dp).fillMaxHeight().clip(RoundedCornerShape(22.dp)).background(Color(0xFF202A4A))) {
-                AsyncImage(featured?.thumbnail,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+                AsyncImage(location.image ?: state.history.firstOrNull()?.thumbnail ?: featured?.thumbnail,null,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0x9910192E),Color.Transparent))))
-                Text("MUSIC",Modifier.align(Alignment.BottomEnd).padding(16.dp),color=Color.White.copy(alpha=0.6f),style=MaterialTheme.typography.titleLarge)
             }
         }
         if(busy) Text("Loading…",style=MaterialTheme.typography.labelMedium,color=Color(0xFFABC5FF))
-        (message ?: state.message)?.takeUnless { it=="Music browser connected." }?.let { Text(it,style=MaterialTheme.typography.labelMedium) }
+        (message ?: state.message ?: state.homeMessage)?.takeUnless { it=="Music browser connected." }?.let { Text(it,style=MaterialTheme.typography.labelMedium,maxLines=2) }
         if(!state.authorized) Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { Text("Connect Music in settings") }
-        LazyColumn(state=rows,modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(18.dp),contentPadding=PaddingValues(6.dp)) {
+        LazyColumn(state=rows,modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(6.dp)) {
             if(detail) {
                 itemsIndexed(detailTracks,key={ index,track -> "${track.id}:$index" }) { index,track ->
-                    Surface(onClick={ onPlay(detailTracks,index) },modifier=Modifier.fillMaxWidth().railBoundary().focusPop().then(if(index==0) Modifier.focusRequester(playlistFocus).railBoundary().then(sectionKeys(null,-1 to heroFocus)) else Modifier).onFocusChanged { if(it.hasFocus) focusSection=1 },scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
-                        colors=ClickableSurfaceDefaults.colors(containerColor=if(queue.getOrNull(queueIndex)?.id==track.id) Color(0xFF253C60) else Color(0xEE172439),contentColor=Color.White,focusedContainerColor=Color(0xFFCDDFFF),focusedContentColor=Color(0xFF0B1729))) {
+                    val current=queue.getOrNull(queueIndex)?.id==track.id
+                    Surface(onClick={ onPlay(detailTracks,index) },modifier=Modifier.fillMaxWidth().railBoundary().focusPop()
+                        .then(if(index==0) Modifier.focusRequester(trackFocus).then(sectionKeys(null,-1 to heroFocus)) else Modifier)
+                        .onFocusChanged { if(it.hasFocus) focusSection=1 },scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
+                        colors=ClickableSurfaceDefaults.colors(containerColor=if(current) Color(0xFF253C60) else Color(0xEE172439),contentColor=Color.White,focusedContainerColor=Color(0xFFCDDFFF),focusedContentColor=Color(0xFF0B1729))) {
                         Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
                             Text("${index+1}",style=MaterialTheme.typography.labelLarge,modifier=Modifier.width(28.dp))
                             AsyncImage(track.thumbnail,null,Modifier.width(90.dp).height(50.dp).clip(RoundedCornerShape(8.dp)),contentScale=ContentScale.Crop)
                             Text(track.title,Modifier.weight(1f),maxLines=2,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodyLarge)
-                            if(queue.getOrNull(queueIndex)?.id==track.id) MusicIcon(R.drawable.ic_nav_music,"Now playing",20)
+                            if(current) MusicIcon(R.drawable.ic_nav_music,"Now playing",20)
                         }
                     }
                 }
+                if(detailTracks.isEmpty()) item { Text("Nothing to show here yet.",style=MaterialTheme.typography.bodyLarge) }
             } else {
-                item(key="playlists") {
-                    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                        Text(if(location.page==MusicPage.LIBRARY) "Your playlists" else firstShelf?.title ?: "Your playlists",style=MaterialTheme.typography.titleMedium)
-                        LazyRow(Modifier.focusGroup().then(sectionKeys(1 to channelFocus,-1 to heroFocus)).onFocusChanged { if(it.hasFocus) focusSection=1 },horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
-                            if(location.page==MusicPage.LIBRARY || firstShelf==null) {
-                                itemsIndexed(state.playlists,key={ _,p -> p.id }) { index,p ->
-                                    MusicArtwork(p.title,p.thumbnail,"${p.count} tracks",if(index==0) Modifier.focusRequester(playlistFocus).railBoundary() else Modifier) {
-                                        model.playlist(p) { loaded -> navigate(MusicLocation(MusicPage.DETAIL,p.title,p.thumbnail,tracks=loaded.tracks)) }
-                                    }
-                                }
-                            } else itemsIndexed(firstShelf.cards,key={ index,c -> "${c.browseId}:${c.playlistId}:${c.videoId}:$index" }) { index,c ->
-                                MusicArtwork(c.title,c.thumbnail,"Mix · Playlist",if(index==0) Modifier.focusRequester(playlistFocus).railBoundary() else Modifier) { openCard(c) }
-                            }
-                            if((location.page==MusicPage.LIBRARY || firstShelf==null) && state.playlists.isEmpty()) item { Button(onClick=model::refresh,modifier=Modifier.focusRequester(playlistFocus).railBoundary()) { Text("Refresh library") } }
+                itemsIndexed(sections,key={ _,row -> row.key }) { index,row ->
+                    val down=rowFocus.getOrNull(index+1)?.let { (index+1) to it }
+                    val up=if(index==0) (-1 to heroFocus) else (index-1) to rowFocus[index-1]
+                    Column(Modifier.focusGroup().then(sectionKeys(down,up)).onFocusChanged { if(it.hasFocus) focusSection=index+1 },
+                        verticalArrangement=Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+                            Text(row.title,style=MaterialTheme.typography.titleMedium)
+                            row.subtitle?.let { Text(it,color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.6f),style=MaterialTheme.typography.labelMedium) }
                         }
+                        row.content(Modifier.focusRequester(rowFocus[index]).railBoundary())
                     }
                 }
-                item(key="channels") {
-                    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                        Text("Your channels & artists",style=MaterialTheme.typography.titleMedium)
-                        LazyRow(Modifier.focusGroup().then(sectionKeys(null,0 to playlistFocus)).onFocusChanged { if(it.hasFocus) focusSection=2 },horizontalArrangement=Arrangement.spacedBy(22.dp),contentPadding=PaddingValues(6.dp)) {
-                            itemsIndexed(channels,key={ index,c -> "${c.browseId}:$index" }) { index,c ->
-                                Column(Modifier.width(90.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                                    Surface(onClick={ openCard(c) },modifier=Modifier.panelFocus().size(70.dp).focusPop(shape=CircleShape).then(if(index==0) Modifier.focusRequester(channelFocus).railBoundary() else Modifier),shape=ClickableSurfaceDefaults.shape(CircleShape),scale=ClickableSurfaceDefaults.scale(focusedScale=1f)) {
-                                        AsyncImage(c.thumbnail,c.title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
-                                    }
-                                    Text(c.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.labelMedium)
-                                }
-                            }
-                            if(channels.isEmpty()) item {
-                                Button(onClick=model::refresh,enabled=!busy,modifier=Modifier.focusRequester(channelFocus).railBoundary()) { Text("Refresh channels") }
-                                Text("Follow artists in YouTube Music to add them here.",style=MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                    }
-                }
-                if(location.page!=MusicPage.LIBRARY) items(shelves.filter { it!==firstShelf },key={ it.title }) { shelf ->
-                    Column(verticalArrangement=Arrangement.spacedBy(10.dp)) {
-                        Text(shelf.title,style=MaterialTheme.typography.titleMedium)
-                        LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
-                            items(shelf.cards) { c -> MusicArtwork(c.title,c.thumbnail,"YouTube Music") { openCard(c) } }
-                        }
-                    }
-                }
-                item { Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Button(onClick=model::refresh,enabled=!busy) { Text("Refresh Music") }
-                    Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { Text("Music settings") }
-                } }
+                if(sections.isEmpty() && state.authorized) item { Text(if(busy) "Loading your music…" else "Nothing to show yet. Try Refresh Music.",style=MaterialTheme.typography.bodyLarge) }
             }
+        }
+    }
+}
+
+@Composable
+private fun MoreTile(label:String,onClick:()->Unit) {
+    Surface(onClick=onClick,modifier=Modifier.panelFocus().width(150.dp).height(126.dp).focusPop(),shape=ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+        scale=ClickableSurfaceDefaults.scale(focusedScale=1f),colors=ClickableSurfaceDefaults.colors(containerColor=Color(0xFF1A2740),focusedContainerColor=Color(0xFF314D7A))) {
+        Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
+            MusicIcon(R.drawable.ic_media_queue,"",26);Spacer(Modifier.height(8.dp))
+            Text(label,color=Color.White,style=MaterialTheme.typography.labelLarge)
         }
     }
 }

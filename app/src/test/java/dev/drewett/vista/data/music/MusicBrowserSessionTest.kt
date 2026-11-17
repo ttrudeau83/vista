@@ -66,4 +66,20 @@ class MusicBrowserSessionTest {
         assertFalse(MusicBrowserSession.matchesChannel("Personal Account · @personal","BlanktargetRecords"))
         assertFalse(MusicBrowserSession.matchesChannel("BlanktargetRecords",""))
     }
+
+    @Test fun renewalUpdatesOnlyExistingCookiesAndIgnoresDeletions() {
+        val session=MusicBrowserSession.parse(listOf("Cookie: SAPISID=test-session; SIDCC=old-cc; __Secure-3PSIDTS=old-ts",
+            "X-Goog-AuthUser: 1","Origin: https://music.youtube.com").joinToString("\n"))
+        val renewed=session.withRenewedCookies(listOf(
+            "SIDCC=new-cc; expires=Wed, 17-Nov-2027 00:00:00 GMT; path=/; domain=.youtube.com; Secure",
+            "__Secure-3PSIDTS=new-ts; Path=/; Secure; HttpOnly",
+            "TRACKER=added; path=/",
+            "SAPISID=EXPIRED; Max-Age=0"))
+        val headers=requireNotNull(renewed).headers(1_700_000_000)
+        val cookie=headers.getValue("Cookie")
+        assertTrue(cookie.contains("SIDCC=new-cc"));assertTrue(cookie.contains("__Secure-3PSIDTS=new-ts"))
+        assertTrue(cookie.contains("SAPISID=test-session"));assertFalse(cookie.contains("TRACKER"))
+        assertEquals("1",headers["X-Goog-AuthUser"])
+        assertNull(renewed.withRenewedCookies(listOf("SIDCC=new-cc; path=/")))
+    }
 }

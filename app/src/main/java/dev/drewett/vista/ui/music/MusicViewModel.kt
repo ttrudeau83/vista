@@ -27,6 +27,8 @@ class MusicViewModel(app:Application):AndroidViewModel(app) {
     fun playlist(playlist:MusicPlaylist,ready:(MusicState)->Unit={})=action { repository.selectPlaylist(playlist);ready(repository.state.value) }
     fun homeCard(card:MusicHomeCard,ready:(MusicState)->Unit={})=action { repository.selectHomeCard(card);ready(repository.state.value) }
     fun disconnect()=action { repository.disconnect() }
+    /** Quiet background refresh: never blocks other actions or shows an error. */
+    fun refreshPersonal() { viewModelScope.launch { try { repository.refreshPersonal() } catch(cancelled:CancellationException) { throw cancelled } catch(_:Exception) { } } }
     fun disconnectBrowser()=action { repository.disconnectBrowserSession() }
     private fun action(block:suspend ()->Unit) {
         if(_busy.value) return

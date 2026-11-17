@@ -28,6 +28,30 @@ internal class MusicBrowserSession private constructor(
     fun toJson():JSONObject=JSONObject().put("cookie",cookie).put("authUser",authUser)
         .put("visitorId",visitorId).put("pageId",pageId)
 
+    /**
+     * Applies Music's Set-Cookie renewals, as a browser would, so the session stays fresh. Only cookies
+     * already in the session are updated; new names and deletions (expired/empty) are ignored.
+     * Returns null when nothing changed.
+     */
+    fun withRenewedCookies(setCookies:List<String>):MusicBrowserSession? {
+        val current=LinkedHashMap(cookies(cookie))
+        var changed=false
+        for(header in setCookies.take(64)) {
+            val parts=header.split(';').map(String::trim)
+            val pair=parts.firstOrNull() ?: continue
+            val separator=pair.indexOf('=')
+            if(separator<=0) continue
+            val name=pair.substring(0,separator).trim();val value=pair.substring(separator+1).trim()
+            if(name !in current || value.isEmpty() || value=="EXPIRED" || value.length>4096) continue
+            if(value.any { it.code !in 33..126 || it==';' || it==',' }) continue
+            val attributes=parts.drop(1).map { it.lowercase(java.util.Locale.ROOT) }
+            if(attributes.any { it=="max-age=0" || it.startsWith("max-age=-") }) continue
+            if(current[name]!=value) { current[name]=value;changed=true }
+        }
+        if(!changed) return null
+        return MusicBrowserSession(current.entries.joinToString("; ") { "${it.key}=${it.value}" },authUser,visitorId,pageId)
+    }
+
     companion object {
         const val ORIGIN="https://music.youtube.com"
         private val retained=setOf("cookie","x-goog-authuser","x-goog-visitor-id","x-goog-pageid","origin","x-origin")

@@ -36,14 +36,28 @@ object MusicHomeProtocol {
     }.distinctBy { it.title }.take(16).toList()
 
     fun tracks(json:JSONObject):List<MusicTrack> = nodes(json,skipCounterparts=true).mapNotNull { node ->
-        val renderer=node.optJSONObject("playlistPanelVideoRenderer") ?: node.optJSONObject("musicResponsiveListItemRenderer") ?: return@mapNotNull null
+        // musicMultiRowListItemRenderer = podcast episode rows (video ID under onTap).
+        val renderer=node.optJSONObject("playlistPanelVideoRenderer") ?: node.optJSONObject("musicResponsiveListItemRenderer")
+            ?: node.optJSONObject("musicMultiRowListItemRenderer") ?: return@mapNotNull null
         if(renderer.has("unplayableText") || (renderer.has("isPlayable") && !renderer.optBoolean("isPlayable"))) return@mapNotNull null
         val id=renderer.optString("videoId").ifBlank { renderer.optJSONObject("playlistItemData")?.optString("videoId").orEmpty() }
             .ifBlank { firstColumnEndpoint(renderer)?.optJSONObject("watchEndpoint")?.optString("videoId").orEmpty() }
+            .ifBlank { renderer.optJSONObject("onTap")?.optJSONObject("watchEndpoint")?.optString("videoId").orEmpty() }
         if(!MusicProtocol.videoId(id)) return@mapNotNull null
         val title=renderer.optJSONObject("title")?.let(::text) ?: flexText(renderer)
         if(title.isBlank()) null else MusicTrack(id,title.take(200),thumbnail(renderer))
     }.distinctBy { it.id }.take(200).toList()
+
+    /** Saved podcasts (library grid). Only real podcast pages (MPSP…) — skips the "Add podcast" tile. */
+    fun podcasts(json:JSONObject):List<MusicHomeCard> = cards(json).filter { it.browseId?.startsWith("MPSP")==true }.take(40)
+
+    /** Diagnostics: the renderer type names present (structure only, no content). */
+    fun rendererNames(json:JSONObject):String = nodes(json).flatMap { it.keys().asSequence() }
+        .filter { it.endsWith("Renderer") }.distinct().take(40).joinToString(",") +
+        // YouTube Music's own UI message (e.g. "sign in" / "history is paused"), not user content.
+        nodes(json).mapNotNull { it.optJSONObject("messageRenderer") }.mapNotNull { m ->
+            sequenceOf(m.optJSONObject("text"),m.optJSONObject("subtext")).mapNotNull { t -> t?.let(::text) }.joinToString(" / ").takeIf(String::isNotBlank)
+        }.firstOrNull()?.let { " | message: ${it.take(160)}" }.orEmpty()
 
     private fun card(node:JSONObject):MusicHomeCard? {
         val renderer=node.optJSONObject("musicTwoRowItemRenderer") ?: node.optJSONObject("musicResponsiveListItemRenderer") ?: return null

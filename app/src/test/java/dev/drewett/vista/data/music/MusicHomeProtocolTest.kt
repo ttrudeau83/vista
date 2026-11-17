@@ -92,4 +92,30 @@ class MusicHomeProtocolTest {
         ]}""")
         assertEquals(listOf("Audio","Quick pick"),MusicHomeProtocol.tracks(json).map { it.title })
     }
+
+    @Test fun podcastEpisodesArePlayableFromTheirOnTapEndpoint() {
+        val json=JSONObject("""{"contents":[{"musicMultiRowListItemRenderer":{
+          "title":{"runs":[{"text":"Episode 12"}]},
+          "onTap":{"watchEndpoint":{"videoId":"epiSODE_123"}},
+          "thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://example.org/ep.jpg"}]}}}}},
+          {"musicMultiRowListItemRenderer":{"title":{"runs":[{"text":"No video"}]},"onTap":{"browseEndpoint":{"browseId":"MPEDx"}}}}]}""")
+        val episode=MusicHomeProtocol.tracks(json).single()
+        assertEquals("epiSODE_123",episode.id);assertEquals("Episode 12",episode.title);assertEquals("https://example.org/ep.jpg",episode.thumbnail)
+    }
+    @Test fun libraryPodcastsKeepOnlyRealPodcastPages() {
+        val json=JSONObject("""{"gridRenderer":{"items":[
+          {"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Add podcast"}]},"navigationEndpoint":{"browseEndpoint":{"browseId":"FEmusic_add_podcast"}}}},
+          {"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"My Show","navigationEndpoint":{"browseEndpoint":{"browseId":"MPSPPLabc123"}}}]}}}]}}""")
+        val podcast=MusicHomeProtocol.podcasts(json).single()
+        assertEquals("My Show",podcast.title);assertEquals("MPSPPLabc123",podcast.browseId)
+        assertEquals("browse",MusicHomeProtocol.destination(podcast).first)
+    }
+    @Test fun historyRowsBecomeAPlayableTrackList() {
+        val json=JSONObject("""{"contents":{"sectionListRenderer":{"contents":[
+          {"musicShelfRenderer":{"title":{"runs":[{"text":"Today"}]},"contents":[
+            {"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"todaySong01"},"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Today song"}]}}}]}}]}},
+          {"musicShelfRenderer":{"title":{"runs":[{"text":"Yesterday"}]},"contents":[
+            {"musicResponsiveListItemRenderer":{"playlistItemData":{"videoId":"yesterday01"},"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Older song"}]}}}]}}]}}]}}}""")
+        assertEquals(listOf("Today song","Older song"),MusicHomeProtocol.tracks(json).map { it.title })
+    }
 }

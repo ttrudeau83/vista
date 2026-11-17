@@ -59,6 +59,29 @@ class MusicRepository private constructor(context: Context) {
                 }
                 ready.complete(Unit)
             }
+            keepAlive()
+        }
+    }
+
+    /**
+     * While Vista runs, touch the Music session every few hours: the reply renews its cookies (see
+     * [MusicBrowserSession.withRenewedCookies]) and tells us early if Google ended the sign-in.
+     */
+    private suspend fun keepAlive() {
+        delay(60_000)
+        while(true) {
+            try {
+                io {
+                    val value=credentials ?: return@io
+                    if(value.browserSession==null) return@io
+                    val signedIn=MusicBrowserSession.profile(musicApi(value,"account/account_menu",JSONObject()))!=null
+                    android.util.Log.i("VistaMusic","keep-alive signedIn=$signedIn")
+                    if(!signedIn) _state.value=_state.value.copy(homeMessage=EXPIRED_MESSAGE)
+                }
+            } catch(cancelled:CancellationException) { throw cancelled } catch(error:Exception) {
+                android.util.Log.w("VistaMusic","keep-alive failed: ${error.javaClass.simpleName}")
+            }
+            delay(6*60*60*1000L)
         }
     }
 
@@ -217,10 +240,31 @@ class MusicRepository private constructor(context: Context) {
             } catch(cancelled:CancellationException) { throw cancelled } catch(_:Exception) { }
             rememberHomeCards(shelves.flatMap { it.cards }+artists)
             _state.value=_state.value.copy(shelves=shelves.distinctBy { it.title },artists=artists,homeMessage=if(shelves.isEmpty()) "Music home is unavailable. Your playlists are still available." else null)
+            loadPersonal(value)
         } catch(cancelled:CancellationException) { throw cancelled }
         catch(error:MusicHomeException) { _state.value=_state.value.copy(homeMessage=error.message+" Your playlists are still available.") }
         catch(_:Exception) { _state.value=_state.value.copy(homeMessage="Music home could not refresh. Your playlists are still available.") }
     }
+
+    /** History and saved podcasts need the signed-in Music browser session; failures keep the last lists. */
+    private suspend fun loadPersonal(value:MusicCredentials) {
+        if(value.browserSession==null) return
+        // Diagnostics log counts and error types only — never titles, IDs or account details.
+        val history=try { musicApi(value,"browse",JSONObject().put("browseId","FEmusic_history")).let { r ->
+                MusicHomeProtocol.tracks(r).take(100).also { if(it.isEmpty()) android.util.Log.i("VistaMusic","history renderers: "+MusicHomeProtocol.rendererNames(r)) } } }
+            catch(cancelled:CancellationException) { throw cancelled } catch(error:Exception) { android.util.Log.w("VistaMusic","history failed: ${error.javaClass.simpleName}");null }
+        val podcasts=try { musicApi(value,"browse",JSONObject().put("browseId","FEmusic_library_non_music_audio_list")).let { r ->
+                MusicHomeProtocol.podcasts(r).also { if(it.isEmpty()) android.util.Log.i("VistaMusic","podcast renderers: "+MusicHomeProtocol.rendererNames(r)) } } }
+            catch(cancelled:CancellationException) { throw cancelled } catch(error:Exception) { android.util.Log.w("VistaMusic","podcasts failed: ${error.javaClass.simpleName}");null }
+        val signedIn=if(history.isNullOrEmpty()) runCatching { MusicBrowserSession.profile(musicApi(value,"account/account_menu",JSONObject()))!=null }.getOrNull() else true
+        android.util.Log.i("VistaMusic","personal: history=${history?.size} podcasts=${podcasts?.size} brand=${value.browserSession?.pageId!=null} signedIn=$signedIn")
+        podcasts?.let(::rememberHomeCards)
+        _state.value=_state.value.copy(history=history ?: _state.value.history,podcasts=podcasts ?: _state.value.podcasts,
+            homeMessage=if(signedIn==false) EXPIRED_MESSAGE else _state.value.homeMessage?.takeUnless { it==EXPIRED_MESSAGE })
+    }
+
+    /** Cheap refresh of Recently played / Podcasts when the Music screen opens. */
+    suspend fun refreshPersonal() = io { credentials?.let { loadPersonal(it) } }
 
     suspend fun selectHomeCard(card:MusicHomeCard) = io {
         val value=requireAuthorized()
@@ -302,7 +346,17 @@ class MusicRepository private constructor(context: Context) {
         if(browser==null) ensureAccessToken(value)
         val version="1."+java.time.LocalDate.now(java.time.ZoneOffset.UTC).format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)+".01.00"
         body.put("context",JSONObject().put("client",JSONObject().put("clientName","WEB_REMIX").put("clientVersion",version).put("hl","en").put("gl","US")).put("user",JSONObject()))
-        val response=request("https://music.youtube.com/youtubei/v1/$endpoint?alt=json&prettyPrint=false",body.toString(),if(browser==null) value.accessToken else null,jsonBody=true,browser=browser)
+        var renewals:List<String> = emptyList()
+        val response=request("https://music.youtube.com/youtubei/v1/$endpoint?alt=json&prettyPrint=false",body.toString(),if(browser==null) value.accessToken else null,jsonBody=true,browser=browser,
+            onSetCookie={ renewals=it })
+        // Keep the stored session as fresh as a browser's (never for an unsaved import candidate).
+        if(browserOverride==null && browser!=null && browser===value.browserSession && renewals.isNotEmpty()) {
+            browser.withRenewedCookies(renewals)?.let { renewed ->
+                value.browserSession=renewed
+                try { vault.write(value) } catch(_:Exception) { value.browserSession=browser }
+                android.util.Log.i("VistaMusic","session renewed (${renewals.size} cookie updates)")
+            }
+        }
         response.optJSONObject("error")?.let {
             throw MusicHomeException(if(it.optInt("code") in listOf(400,401,403)) "Music home needs a browser connection." else "Music home is temporarily unavailable.")
         }
@@ -319,7 +373,8 @@ class MusicRepository private constructor(context: Context) {
         vault.write(value)
     }
     private suspend fun post(url:String,fields:Map<String,String>)=request(url,body=fields.entries.joinToString("&") { encode(it.key)+"="+encode(it.value) })
-    private suspend fun request(url:String,body:String?=null,token:String?=null,jsonBody:Boolean=false,browser:MusicBrowserSession?=null):JSONObject {
+    private suspend fun request(url:String,body:String?=null,token:String?=null,jsonBody:Boolean=false,browser:MusicBrowserSession?=null,
+        onSetCookie:((List<String>)->Unit)?=null):JSONObject {
         currentCoroutineContext().ensureActive()
         require(browser==null || (jsonBody && url.startsWith("https://music.youtube.com/youtubei/v1/") && token==null))
         val connection=URL(url).openConnection() as HttpURLConnection
@@ -339,6 +394,8 @@ class MusicRepository private constructor(context: Context) {
                 connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             }
             val status=connection.responseCode
+            if(onSetCookie!=null) connection.headerFields.entries.filter { it.key?.equals("Set-Cookie",ignoreCase=true)==true }
+                .flatMap { it.value.orEmpty() }.takeIf { it.isNotEmpty() }?.let(onSetCookie)
             require(status !in 300..399) { "Google redirected the API request unexpectedly." }
             val maxBytes=if(jsonBody) 8*1024*1024 else 2*1024*1024
             require(connection.contentLengthLong <= maxBytes)
@@ -366,6 +423,7 @@ class MusicRepository private constructor(context: Context) {
         } }
     }
     companion object {
+        private const val EXPIRED_MESSAGE="Your YouTube Music sign-in on this TV has expired, so history, podcasts and personal mixes are hidden. Reconnect it from Music settings."
         @Volatile private var instance:MusicRepository?=null
         fun get(context:Context):MusicRepository=instance ?: synchronized(this) { instance ?: MusicRepository(context.applicationContext).also { instance=it } }
     }
