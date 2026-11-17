@@ -124,6 +124,7 @@ fun HomeTab(
     modifier: Modifier = Modifier,
     photo: ImmichBackgroundState = ImmichBackgroundState(),
     calendarPanel: (@Composable () -> Unit)? = null,
+    heroAction: (@Composable () -> Unit)? = null,
 ) {
     var focused by remember { mutableStateOf<Spotlight?>(null) }
     val heroItem = focused ?: sections.firstOrNull()?.let { firstSpotlightOf(it) }
@@ -152,9 +153,12 @@ fun HomeTab(
                 heroHeight = heroHeight,
                 onFirstShelfHeight = { height -> firstShelfHeight = with(density) { height.toDp() } },
                 hero = {
-                    Row(Modifier.fillMaxSize().padding(start = RowEdgePadding, end = 40.dp, top = PanelTopPadding)) {
-                        HeroInfo(item = heroItem, modifier = Modifier.weight(1f).padding(end = 24.dp))
-                        if (calendarPanel != null) Box(Modifier.width(320.dp)) { calendarPanel() }
+                    Column(Modifier.fillMaxSize().padding(start = RowEdgePadding, end = 40.dp, top = PanelTopPadding)) {
+                        Row(Modifier.weight(1f).fillMaxWidth()) {
+                            HeroInfo(item = heroItem, modifier = Modifier.weight(1f).padding(end = 24.dp))
+                            if (calendarPanel != null) Box(Modifier.width(320.dp)) { calendarPanel() }
+                        }
+                        heroAction?.invoke()
                     }
                 },
             )

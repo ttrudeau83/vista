@@ -80,6 +80,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     val shows by viewModel.shows.collectAsStateWithLifecycle()
     val allContent by viewModel.allContent.collectAsStateWithLifecycle()
     val nuvioApp = apps.firstOrNull { it.packageName.contains("nuvio", ignoreCase = true) }
+    val smartTubeApp = apps.firstOrNull { dev.drewett.vista.domain.PublishedContent.isSmartTube(it.packageName) }
 
     var tab by remember { mutableStateOf(VistaTab.FOR_YOU) }
     var searchOpen by remember { mutableStateOf(false) }
@@ -197,9 +198,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                     }
                 }
             }
-            VistaTab.SMARTTUBE -> if (!loaded) Loading() else if (smartTubeSections.isEmpty()) {
-                EmptyContent("SmartTube has not published any accessible TV channels. Open SmartTube from Apps to configure its channels.")
-            } else HomeTab(
+            VistaTab.SMARTTUBE -> if (!loaded) Loading() else HomeTab(
                 sections = smartTubeSections,
                 favourites = favouritesSet,
                 onLaunch = viewModel::launch,
@@ -209,6 +208,13 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 contentFocus = contentFocus,
                 resetSignal = resetSignal,
                 photo = photo,
+                heroAction = {
+                    Button(onClick={ smartTubeApp?.let(viewModel::launch) }, enabled=smartTubeApp!=null,
+                        modifier=Modifier.railBoundary().then(if(smartTubeSections.isEmpty()) Modifier.focusRequester(contentFocus) else Modifier)) {
+                        Text(if(smartTubeApp!=null) "Open SmartTube" else "SmartTube is not installed")
+                    }
+                    if(smartTubeSections.isEmpty()) Text("Open SmartTube to configure its TV channels.", style=MaterialTheme.typography.bodyLarge)
+                },
             )
         }
 

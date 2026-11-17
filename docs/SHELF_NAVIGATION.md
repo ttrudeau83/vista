@@ -20,3 +20,9 @@ Nuvio itself opens full-screen. This update does not overlay or embed another ap
 Android cross-app activity embedding requires the embedded app's explicit opt-in
 and compatible device support; the inspected Nuvio reference manifest does not opt
 in. See [Android activity embedding](https://developer.android.com/develop/ui/views/layout/activity-embedding#cross-application-embedding).
+
+SmartTube's hero includes an Open SmartTube action above the first shelf, including
+when no TV channels are published. SmartTube shelves use only SmartTube-owned TV
+provider channels; Music's Google/browser account is independent. The TV channel
+metadata does not identify the active SmartTube account; select ttrudeau in SmartTube
+to control what that app publishes.

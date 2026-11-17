@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 13
-        versionName = "0.4.9-shelves"
+        versionCode = 14
+        versionName = "0.4.10-smarttube"
     }
 
     buildTypes {
