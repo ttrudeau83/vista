@@ -135,3 +135,17 @@ of all devices", password change, security checks). Chrome's device-bound sessio
 cookies may age copied sessions faster. Copy from a Firefox private window when
 possible, and close it without signing out. Reconnecting needs PowerShell 7
 (installed via winget on 2026-11-17) and the diagnostic build, then the release.
+
+## 0.6.4 focus fixes (2026-11-17)
+
+- Up/Down move a whole row at a time and land on the card last focused in that row (first card on a
+  first visit). The row and card are scrolled into view before focus moves, so focus is never left on a
+  card that scrolled away (the earlier "stuck on Recently played" bug, caused by a row whose first card
+  had been pushed off-screen when YouTube Music added cards in front of it).
+- Back from a playlist, shelf page or track list returns to the exact card or track that opened it.
+
+## 0.6.5 full-screen video (2026-11-17)
+
+- The top-right video is a focusable tile (Right past the header buttons). Selecting it shows the same
+  player full screen without restarting it; controls fade after 4 s and return on any key. Back or
+  "Exit full screen" returns focus to the tile. The rail hides while full screen, as in the photo view.

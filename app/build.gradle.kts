@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 23
-        versionName = "0.6.3-home-guard"
+        versionCode = 27
+        versionName = "0.7.1-tv-inputs"
     }
 
     buildTypes {

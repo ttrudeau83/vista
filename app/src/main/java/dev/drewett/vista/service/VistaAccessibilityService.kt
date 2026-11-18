@@ -7,6 +7,14 @@ import android.view.accessibility.AccessibilityEvent
 import dev.drewett.vista.QuickSettingsActivity
 import dev.drewett.vista.MainActivity
 import android.os.SystemClock
+import android.widget.Toast
+import dev.drewett.vista.data.tv.LgTvRemote
+import dev.drewett.vista.data.tv.RemoteInputButtons
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /** A user-requested Freeplay visit may use the stock Home activity internally. */
 object GoogleTvLaunchSession {
@@ -22,6 +30,10 @@ object GoogleTvLaunchSession {
 class VistaAccessibilityService : AccessibilityService() {
     private var lastHomeLaunch = 0L
     private var firmwareHome: android.content.ComponentName? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val tv by lazy { LgTvRemote(this) }
+
+    override fun onDestroy() { scope.cancel(); super.onDestroy() }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -68,8 +80,28 @@ class VistaAccessibilityService : AccessibilityService() {
             }
             return true // consume both down and up so the system dashboard doesn't also open
         }
+        RemoteInputButtons.capture?.let { capture ->
+            if (RemoteInputButtons.assignable(event.keyCode)) {
+                if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) capture(event.keyCode)
+                return true
+            }
+        }
+        RemoteInputButtons.portFor(this, event.keyCode)?.let { port ->
+            if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) switchInput(port)
+            return true // consume both down and up so the app shortcut never also opens
+        }
         return false
     }
+
+    private fun switchInput(port: Int) {
+        if (!tv.paired) toast("Pairing with the TV — choose Allow on the TV screen")
+        scope.launch {
+            val outcome = tv.switchToHdmi(port)
+            if (outcome is LgTvRemote.Outcome.Failed) toast(outcome.message)
+        }
+    }
+
+    private fun toast(message: String) { runCatching { Toast.makeText(this, message, Toast.LENGTH_LONG).show() } }
 
     private fun openHome() {
         val now = SystemClock.elapsedRealtime()

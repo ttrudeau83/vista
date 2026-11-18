@@ -47,10 +47,27 @@ internal class MusicBrowserState {
     val history=mutableStateListOf<MusicLocation>()
     val rows=LazyListState()
     val focusSection=mutableStateOf(0)
+    /** Last focused card per "page:row" (or "page:tracks"), so Down and Back return to it. */
+    val cardMemory=mutableStateMapOf<String,Int>()
+    private val rowStates=HashMap<String,LazyListState>()
+    fun rowState(key:String)=rowStates.getOrPut(key) { LazyListState() }
+    fun forgetPage(pageId:String) {
+        cardMemory.keys.filter { it.startsWith("$pageId|") }.forEach(cardMemory::remove)
+        rowStates.keys.filter { it.startsWith("$pageId|") }.forEach(rowStates::remove)
+    }
 }
 
-/** One horizontal row on the Music home/library; [first] goes on its first item (focus target + rail edge). */
-private class MusicRow(val key:String,val title:String,val subtitle:String?=null,val content:@Composable (first:Modifier)->Unit)
+private fun MusicLocation.pageId()="${page.name}:$title"
+
+private fun LazyListState.fullyShows(index:Int)=layoutInfo.visibleItemsInfo.any {
+    it.index==index && it.offset>=layoutInfo.viewportStartOffset && it.offset+it.size<=layoutInfo.viewportEndOffset
+}
+
+/**
+ * One horizontal row on the Music home/library. [card] gives item i its modifier (focus memory, the row's
+ * focus target on the remembered card, rail edge on the first); [list] is the row's own scroll state.
+ */
+private class MusicRow(val key:String,val title:String,val subtitle:String?=null,val content:@Composable (card:(Int)->Modifier,list:LazyListState)->Unit)
 
 private const val YOUTUBE_MUSIC_PACKAGE="com.google.android.youtube.tvmusic"
 
@@ -77,27 +94,61 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
     LaunchedEffect(Unit) { model.refreshPersonal() }
 
     val detail=location.page==MusicPage.DETAIL || location.page==MusicPage.QUEUE
-    fun focusContent(section:Int,isDetail:Boolean) {
-        scope.launch {
-            if(section>0) rows.scrollToItem(if(isDetail) 0 else section-1)
-            withFrameNanos { }
-            val target=if(section<=0) heroFocus else if(isDetail) trackFocus else rowFocusHolder.value.getOrNull(section-1)
-            runCatching { (target ?: heroFocus).requestFocus() }
-        }
+    val memory=navigation.cardMemory
+    val rowKeysHolder=remember { mutableStateOf<List<String>>(emptyList()) }
+    suspend fun tryFocus(target:FocusRequester,section:Int):Boolean {
+        focusSection=-1
+        runCatching { target.requestFocus() }
+        withFrameNanos { }
+        return focusSection==section
     }
+    /**
+     * Focus the remembered card of [section] (0 = header, n = row n-1 or the track list). The row and the card
+     * are scrolled into view first, because a card that isn't laid out can't take focus; focus moves before
+     * the list settles, so it is never left on a card that has scrolled away.
+     */
+    suspend fun focusSectionNow(section:Int) {
+        if(section<=0) {
+            runCatching { heroFocus.requestFocus() }
+            runCatching { rows.animateScrollToItem(0) }
+            return
+        }
+        val pageId=location.pageId()
+        if(location.page==MusicPage.DETAIL || location.page==MusicPage.QUEUE) {
+            val key="$pageId|tracks"
+            val index=memory[key] ?: 0
+            if(!rows.fullyShows(index)) { rows.scrollToItem(maxOf(0,index-1));withFrameNanos { } }
+            if(!tryFocus(trackFocus,1)) { memory[key]=0;rows.scrollToItem(0);withFrameNanos { };tryFocus(trackFocus,1) }
+            return
+        }
+        val row=section-1
+        val target=rowFocusHolder.value.getOrNull(row) ?: return
+        val key="$pageId|"+(rowKeysHolder.value.getOrNull(row) ?: return)
+        if(rows.layoutInfo.visibleItemsInfo.none { it.index==row }) { rows.scrollToItem(row);withFrameNanos { } }
+        val list=navigation.rowState(key)
+        val card=memory[key] ?: 0
+        if(!list.fullyShows(card)) { list.scrollToItem(card);withFrameNanos { } }
+        if(!tryFocus(target,section)) {
+            memory[key]=0;withFrameNanos { }
+            list.scrollToItem(0);withFrameNanos { }
+            tryFocus(target,section)
+        }
+        runCatching { rows.animateScrollToItem(row) }
+    }
+    fun focusContent(section:Int) { scope.launch { withFrameNanos { };focusSectionNow(section) } }
     fun navigate(next:MusicLocation) {
-        history.add(location.copy(returnSection=focusSection));location=next;focusSection=1
-        focusContent(1,next.page==MusicPage.DETAIL || next.page==MusicPage.QUEUE)
+        history.add(location.copy(returnSection=focusSection))
+        navigation.forgetPage(next.pageId())
+        location=next;focusSection=1
+        scope.launch { withFrameNanos { };rows.scrollToItem(0);focusSectionNow(1) }
     }
     fun back() {
         location=if(history.isNotEmpty()) history.removeAt(history.lastIndex) else MusicLocation()
-        focusSection=location.returnSection
-        focusContent(location.returnSection,location.page==MusicPage.DETAIL || location.page==MusicPage.QUEUE)
+        focusContent(location.returnSection)
     }
     BackHandler(true) {
-        if(focusSection!=0 && location.page==MusicPage.HOME && history.isEmpty()) {
-            scope.launch { rows.animateScrollToItem(0);heroFocus.requestFocus() }
-        } else if(location.page==MusicPage.HOME && history.isEmpty()) onBackRoot() else back()
+        if(focusSection!=0 && location.page==MusicPage.HOME && history.isEmpty()) focusContent(0)
+        else if(location.page==MusicPage.HOME && history.isEmpty()) onBackRoot() else back()
     }
     LaunchedEffect(queueRequest) {
         if(queueRequest!=openQueueObserved && queue.isNotEmpty()) {
@@ -118,13 +169,14 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
         }
     }
     fun openYouTubeMusic() { youTubeMusic?.let { runCatching { context.startActivity(Intent(it).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } } }
-    fun sectionKeys(down:Pair<Int,FocusRequester>?,up:Pair<Int,FocusRequester>?):Modifier = Modifier.onPreviewKeyEvent { event ->
+    // Up/Down move whole sections (header, then each row), always landing on the row's remembered card.
+    var moving by remember { mutableStateOf(false) }
+    fun sectionKeys(down:Int?,up:Int?):Modifier = Modifier.onPreviewKeyEvent { event ->
         val target=when(event.key) { Key.DirectionDown -> down;Key.DirectionUp -> up;else -> null }
         if(target==null) false else {
-            if(event.type==KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount==0) scope.launch {
-                if(target.first>=0) rows.animateScrollToItem(target.first)
-                withFrameNanos { }
-                runCatching { target.second.requestFocus() }
+            if(event.type==KeyEventType.KeyDown && !moving) {
+                moving=true
+                scope.launch { try { focusSectionNow(target) } finally { moving=false } }
             }
             true
         }
@@ -138,55 +190,56 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
     val detailTracks=if(location.page==MusicPage.QUEUE) queue else location.tracks
     val profile=state.browserProfile ?: state.channel?.title.orEmpty()
 
-    @Composable fun cardRow(cards:List<MusicHomeCard>,subtitle:String,first:Modifier) {
-        LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
+    @Composable fun cardRow(cards:List<MusicHomeCard>,subtitle:String,card:(Int)->Modifier,list:LazyListState) {
+        LazyRow(state=list,horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
             itemsIndexed(cards,key={ index,c -> "${c.browseId}:${c.playlistId}:${c.videoId}:$index" }) { index,c ->
-                MusicArtwork(c.title,c.thumbnail,subtitle,if(index==0) first else Modifier) { openCard(c) }
+                MusicArtwork(c.title,c.thumbnail,subtitle,card(index)) { openCard(c) }
             }
         }
     }
-    val playlistsRow=MusicRow("playlists","Your playlists","${state.playlists.size} playlists") { first ->
-        LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
+    val playlistsRow=MusicRow("playlists","Your playlists","${state.playlists.size} playlists") { card,list ->
+        LazyRow(state=list,horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
             itemsIndexed(state.playlists,key={ _,p -> p.id }) { index,p ->
-                MusicArtwork(p.title,p.thumbnail,"${p.count} tracks",if(index==0) first else Modifier) {
+                MusicArtwork(p.title,p.thumbnail,"${p.count} tracks",card(index)) {
                     model.playlist(p) { loaded -> navigate(MusicLocation(MusicPage.DETAIL,p.title,p.thumbnail,tracks=loaded.tracks)) }
                 }
             }
-            if(state.playlists.isEmpty()) item { Button(onClick=model::refresh,enabled=!busy,modifier=first) { Text("Refresh library") } }
+            if(state.playlists.isEmpty()) item { Button(onClick=model::refresh,enabled=!busy,modifier=card(0)) { Text("Refresh library") } }
         }
     }
-    val historyRow=MusicRow("history","Recently played","Pick up where you left off") { first ->
-        LazyRow(horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
-            itemsIndexed(state.history.take(30),key={ index,t -> "${t.id}:$index" }) { index,t ->
-                MusicArtwork(t.title,t.thumbnail,if(queue.getOrNull(queueIndex)?.id==t.id) "Now playing" else "Played recently",if(index==0) first else Modifier) { onPlay(state.history,index) }
+    val historyRow=MusicRow("history","Recently played","Pick up where you left off") { card,list ->
+        val shown=state.history.take(30)
+        LazyRow(state=list,horizontalArrangement=Arrangement.spacedBy(14.dp),contentPadding=PaddingValues(4.dp)) {
+            itemsIndexed(shown,key={ index,t -> "${t.id}:$index" }) { index,t ->
+                MusicArtwork(t.title,t.thumbnail,if(queue.getOrNull(queueIndex)?.id==t.id) "Now playing" else "Played recently",card(index)) { onPlay(state.history,index) }
             }
-            item(key="history-all") { MoreTile("All history") { navigate(MusicLocation(MusicPage.DETAIL,"Recently played",tracks=state.history)) } }
+            item(key="history-all") { MoreTile("All history",card(shown.size)) { navigate(MusicLocation(MusicPage.DETAIL,"Recently played",tracks=state.history)) } }
         }
     }
-    val podcastsRow=MusicRow("podcasts","Podcasts","Saved in your library") { first -> cardRow(state.podcasts,"Podcast",first) }
-    val channelsRow=MusicRow("channels","Your channels & artists") { first ->
-        LazyRow(horizontalArrangement=Arrangement.spacedBy(22.dp),contentPadding=PaddingValues(6.dp)) {
+    val podcastsRow=MusicRow("podcasts","Podcasts","Saved in your library") { card,list -> cardRow(state.podcasts,"Podcast",card,list) }
+    val channelsRow=MusicRow("channels","Your channels & artists") { card,list ->
+        LazyRow(state=list,horizontalArrangement=Arrangement.spacedBy(22.dp),contentPadding=PaddingValues(6.dp)) {
             itemsIndexed(channels,key={ index,c -> "${c.browseId}:$index" }) { index,c ->
                 Column(Modifier.width(96.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                    Surface(onClick={ openCard(c) },modifier=Modifier.panelFocus().size(76.dp).focusPop(shape=CircleShape).then(if(index==0) first else Modifier),
+                    Surface(onClick={ openCard(c) },modifier=card(index).panelFocus().size(76.dp).focusPop(shape=CircleShape),
                         shape=ClickableSurfaceDefaults.shape(CircleShape),scale=ClickableSurfaceDefaults.scale(focusedScale=1f)) {
                         AsyncImage(c.thumbnail,c.title,Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
                     }
                     Text(c.title,maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.labelMedium)
                 }
             }
-            if(channels.isEmpty()) item { Button(onClick=model::refresh,enabled=!busy,modifier=first) { Text("Refresh channels") } }
+            if(channels.isEmpty()) item { Button(onClick=model::refresh,enabled=!busy,modifier=card(0)) { Text("Refresh channels") } }
         }
     }
-    val footerRow=MusicRow("footer","More") { first ->
+    val footerRow=MusicRow("footer","More") { card,_ ->
         Row(horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-            Button(onClick=model::refresh,enabled=!busy,modifier=first) { Text("Refresh Music") }
-            Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { Text("Music settings") }
+            Button(onClick=model::refresh,enabled=!busy,modifier=card(0)) { Text("Refresh Music") }
+            Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) },modifier=card(1)) { Text("Music settings") }
         }
     }
     val sections:List<MusicRow> = when {
         detail -> emptyList()
-        nested -> shelves.map { shelf -> MusicRow("shelf:"+shelf.title,shelf.title) { first -> cardRow(shelf.cards,"YouTube Music",first) } }
+        nested -> shelves.map { shelf -> MusicRow("shelf:"+shelf.title,shelf.title) { card,list -> cardRow(shelf.cards,"YouTube Music",card,list) } }
         location.page==MusicPage.LIBRARY -> buildList {
             add(playlistsRow)
             if(state.podcasts.isNotEmpty()) add(podcastsRow)
@@ -195,16 +248,18 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
         }
         else -> buildList {
             if(state.history.isNotEmpty()) add(historyRow)
-            if(firstShelf!=null) add(MusicRow("mixes",firstShelf.title,"Made for you") { first -> cardRow(firstShelf.cards,"Mix · Playlist",first) })
+            if(firstShelf!=null) add(MusicRow("mixes",firstShelf.title,"Made for you") { card,list -> cardRow(firstShelf.cards,"Mix · Playlist",card,list) })
             else add(playlistsRow)
             if(state.podcasts.isNotEmpty()) add(podcastsRow)
             add(channelsRow)
-            shelves.filter { it!==firstShelf }.forEach { shelf -> add(MusicRow("shelf:"+shelf.title,shelf.title) { first -> cardRow(shelf.cards,"YouTube Music",first) }) }
+            shelves.filter { it!==firstShelf }.forEach { shelf -> add(MusicRow("shelf:"+shelf.title,shelf.title) { card,list -> cardRow(shelf.cards,"YouTube Music",card,list) }) }
             add(footerRow)
         }
     }
     val rowFocus=remember(sections.map { it.key }) { List(sections.size) { FocusRequester() } }
     rowFocusHolder.value=rowFocus
+    rowKeysHolder.value=sections.map { it.key }
+    val pageId=location.pageId()
     // Rows that load late (history, podcasts) insert above the visible ones; LazyColumn would keep the old
     // first row pinned and hide the new one. While the header has focus, show the list from its top.
     LaunchedEffect(sections.firstOrNull()?.key) { if(focusSection==0 && !detail) rows.scrollToItem(0) }
@@ -227,7 +282,7 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                     },color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.7f),style=MaterialTheme.typography.bodyMedium,maxLines=1)
                 // Header actions scroll sideways (focus brings each into view) so they never clip beside the player.
                 Row(Modifier.focusRequester(heroFocus).focusGroup().horizontalScroll(rememberScrollState())
-                    .then(sectionKeys(0 to (if(detail) trackFocus else rowFocus.firstOrNull() ?: heroFocus),null))
+                    .then(sectionKeys(if(detail || rowFocus.isNotEmpty()) 1 else null,null))
                     .onFocusChanged { if(it.hasFocus) focusSection=0 },horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                     Button(onClick={
                         if(detail && detailTracks.isNotEmpty()) onPlay(detailTracks,0)
@@ -255,11 +310,14 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
         if(!state.authorized) Button(onClick={ context.startActivity(Intent(context,MusicSettingsActivity::class.java)) }) { Text("Connect Music in settings") }
         LazyColumn(state=rows,modifier=Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(20.dp),contentPadding=PaddingValues(6.dp)) {
             if(detail) {
+                val tracksKey="$pageId|tracks"
+                val rememberedTrack=memory[tracksKey] ?: 0
                 itemsIndexed(detailTracks,key={ index,track -> "${track.id}:$index" }) { index,track ->
                     val current=queue.getOrNull(queueIndex)?.id==track.id
                     Surface(onClick={ onPlay(detailTracks,index) },modifier=Modifier.fillMaxWidth().railBoundary().focusPop()
-                        .then(if(index==0) Modifier.focusRequester(trackFocus).then(sectionKeys(null,-1 to heroFocus)) else Modifier)
-                        .onFocusChanged { if(it.hasFocus) focusSection=1 },scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
+                        .then(if(index==rememberedTrack) Modifier.focusRequester(trackFocus) else Modifier)
+                        .then(if(index==0) sectionKeys(null,0) else Modifier)
+                        .onFocusChanged { if(it.hasFocus) { focusSection=1;memory[tracksKey]=index } },scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
                         colors=ClickableSurfaceDefaults.colors(containerColor=if(current) Color(0xFF253C60) else Color(0xEE172439),contentColor=Color.White,focusedContainerColor=Color(0xFFCDDFFF),focusedContentColor=Color(0xFF0B1729))) {
                         Row(Modifier.padding(10.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(14.dp)) {
                             Text("${index+1}",style=MaterialTheme.typography.labelLarge,modifier=Modifier.width(28.dp))
@@ -272,15 +330,23 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
                 if(detailTracks.isEmpty()) item { Text("Nothing to show here yet.",style=MaterialTheme.typography.bodyLarge) }
             } else {
                 itemsIndexed(sections,key={ _,row -> row.key }) { index,row ->
-                    val down=rowFocus.getOrNull(index+1)?.let { (index+1) to it }
-                    val up=if(index==0) (-1 to heroFocus) else (index-1) to rowFocus[index-1]
-                    Column(Modifier.focusGroup().then(sectionKeys(down,up)).onFocusChanged { if(it.hasFocus) focusSection=index+1 },
+                    val down=if(index+1<sections.size) index+2 else null
+                    val memKey="$pageId|${row.key}"
+                    val remembered=memory[memKey] ?: 0
+                    val target=rowFocus[index]
+                    val railEdge=Modifier.railBoundary()
+                    val card:(Int)->Modifier={ i ->
+                        Modifier.onFocusChanged { if(it.isFocused) memory[memKey]=i }
+                            .then(if(i==remembered) Modifier.focusRequester(target) else Modifier)
+                            .then(if(i==0) railEdge else Modifier)
+                    }
+                    Column(Modifier.focusGroup().then(sectionKeys(down,index)).onFocusChanged { if(it.hasFocus) focusSection=index+1 },
                         verticalArrangement=Arrangement.spacedBy(10.dp)) {
                         Row(verticalAlignment=Alignment.Bottom,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             Text(row.title,style=MaterialTheme.typography.titleMedium)
                             row.subtitle?.let { Text(it,color=MaterialTheme.colorScheme.onBackground.copy(alpha=0.6f),style=MaterialTheme.typography.labelMedium) }
                         }
-                        row.content(Modifier.focusRequester(rowFocus[index]).railBoundary())
+                        row.content(card,navigation.rowState(memKey))
                     }
                 }
                 if(sections.isEmpty() && state.authorized) item { Text(if(busy) "Loading your music…" else "Nothing to show yet. Try Refresh Music.",style=MaterialTheme.typography.bodyLarge) }
@@ -290,8 +356,8 @@ internal fun MusicBrowser(model:MusicViewModel,contentFocus:FocusRequester,hasPl
 }
 
 @Composable
-private fun MoreTile(label:String,onClick:()->Unit) {
-    Surface(onClick=onClick,modifier=Modifier.panelFocus().width(150.dp).height(126.dp).focusPop(),shape=ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
+private fun MoreTile(label:String,modifier:Modifier=Modifier,onClick:()->Unit) {
+    Surface(onClick=onClick,modifier=modifier.panelFocus().width(150.dp).height(126.dp).focusPop(),shape=ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),
         scale=ClickableSurfaceDefaults.scale(focusedScale=1f),colors=ClickableSurfaceDefaults.colors(containerColor=Color(0xFF1A2740),focusedContainerColor=Color(0xFF314D7A))) {
         Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.Center,horizontalAlignment=Alignment.CenterHorizontally) {
             MusicIcon(R.drawable.ic_media_queue,"",26);Spacer(Modifier.height(8.dp))

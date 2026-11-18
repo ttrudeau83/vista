@@ -36,6 +36,12 @@ import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.tv.material3.ClickableSurfaceDefaults
+import dev.drewett.vista.ui.components.focusPop
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
@@ -96,6 +102,12 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     fun togglePlayback() { if(isPlaying) playerController.pause() else playerController.play();isPlaying=!isPlaying }
     var ambient by remember { mutableStateOf(false) }
     var hideVideo by remember { mutableStateOf(false) }
+    // Full-screen video: the same player (movable content keeps playback going) filling the screen.
+    var fullVideo by remember { mutableStateOf(false) }
+    val playerTileFocus=remember { FocusRequester() }
+    val fullExitFocus=remember { FocusRequester() }
+    var playerTileFocused by remember { mutableStateOf(false) }
+    val scope=rememberCoroutineScope()
 
     var overlayAwake by remember { mutableStateOf(true) }
     var overlayInteraction by remember { mutableStateOf(0) }
@@ -108,19 +120,29 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
     val trackPlayer=playing?.let { track ->
         remember(track.id,playbackIndex) { movableContentOf<Modifier,Boolean> { playerModifier,interactive -> OfficialYouTubePlayer(track.id,playerModifier,interactive,onEnded={ nextTrack.value() },controller=playerController,onPlayingChanged={ isPlaying=it }) } }
     }
-    LaunchedEffect(ambient) { onAmbientChanged(ambient);if(ambient) runCatching { ambientExitFocus.requestFocus() } }
-    DisposableEffect(Unit) { onDispose { onAmbientChanged(false) } }
-    LaunchedEffect(ambient,overlayInteraction) {
-        overlayAwake=true
-        if(ambient) { delay(4000);overlayAwake=false }
+    LaunchedEffect(ambient,fullVideo) {
+        onAmbientChanged(ambient || fullVideo)
+        if(ambient) runCatching { ambientExitFocus.requestFocus() }
+        else if(fullVideo) runCatching { fullExitFocus.requestFocus() }
     }
+    DisposableEffect(Unit) { onDispose { onAmbientChanged(false) } }
+    LaunchedEffect(ambient,fullVideo,overlayInteraction) {
+        overlayAwake=true
+        if(ambient || fullVideo) { delay(4000);overlayAwake=false }
+    }
+    LaunchedEffect(playing==null) { if(playing==null) fullVideo=false }
     LaunchedEffect(state.authorized) {
-        if(!state.authorized) { ambient=false;playbackQueue=emptyList();playbackIndex=-1 }
+        if(!state.authorized) { ambient=false;fullVideo=false;playbackQueue=emptyList();playbackIndex=-1 }
         else if(state.playlists.isEmpty()) model.refresh()
     }
+    fun exitFullVideo() {
+        fullVideo=false
+        scope.launch { withFrameNanos { };runCatching { playerTileFocus.requestFocus() } }
+    }
     BackHandler(enabled=ambient) { ambient=false }
+    BackHandler(enabled=fullVideo && !ambient) { exitFullVideo() }
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-    if(ambient && playing!=null && trackPlayer!=null) {
+    if((ambient || fullVideo) && playing!=null && trackPlayer!=null) {
         Box(Modifier.fillMaxSize().background(Color.Black).onPreviewKeyEvent { event ->
             if(event.type==KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount==0) {
                 if(event.nativeKeyEvent.keyCode in setOf(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,android.view.KeyEvent.KEYCODE_MEDIA_NEXT,android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS)) {
@@ -141,11 +163,18 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
                 if(select && (wasFaded || revealRelease)) { revealRelease=true;true } else wasFaded && direction
             } else false
         }) {
-            MusicAmbientPhotos(Modifier.fillMaxSize().zIndex(if(hideVideo) 1f else -1f)) { ambient=false }
-            Box(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=20.dp)) {
-                trackPlayer(Modifier.width(224.dp).height(126.dp),!hideVideo)
+            if(ambient) {
+                MusicAmbientPhotos(Modifier.fillMaxSize().zIndex(if(hideVideo) 1f else -1f)) { ambient=false }
+                Box(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=20.dp)) {
+                    trackPlayer(Modifier.width(224.dp).height(126.dp),!hideVideo)
+                }
+            } else {
+                trackPlayer(Modifier.fillMaxSize(),false)
+                // Bottom shade so the controls stay readable over bright video; fades with them.
+                Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(260.dp).zIndex(1f).graphicsLayer { alpha=overlayAlpha }
+                    .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent,Color.Black.copy(alpha=0.75f)))))
             }
-            Column(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=if(hideVideo) 24.dp else 162.dp).width(320.dp).zIndex(2f).graphicsLayer { alpha=overlayAlpha },
+            Column(Modifier.align(Alignment.BottomEnd).padding(end=24.dp,bottom=if(fullVideo || hideVideo) 24.dp else 162.dp).width(320.dp).zIndex(2f).graphicsLayer { alpha=overlayAlpha },
                 horizontalAlignment=Alignment.End,verticalArrangement=Arrangement.spacedBy(8.dp)) {
 
                 Text(playing!!.title,color=Color.White.copy(alpha=0.85f),maxLines=1,overflow=TextOverflow.Ellipsis,textAlign=TextAlign.End,
@@ -158,8 +187,12 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
                     Button(onClick={ skip(1) },enabled=playbackIndex<playbackQueue.lastIndex,colors=buttonColors,contentPadding=androidx.compose.foundation.layout.PaddingValues(10.dp)) { MusicIcon(dev.drewett.vista.R.drawable.ic_media_next,"Next track") }
                 }
                 Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    Button(onClick={ hideVideo=!hideVideo },colors=buttonColors) { Text(if(hideVideo) "Show video" else "Hide video") }
-                    Button(onClick={ ambient=false },colors=buttonColors,modifier=Modifier.focusRequester(ambientExitFocus)) { Text("Return to music") }
+                    if(ambient) {
+                        Button(onClick={ hideVideo=!hideVideo },colors=buttonColors) { Text(if(hideVideo) "Show video" else "Hide video") }
+                        Button(onClick={ ambient=false },colors=buttonColors,modifier=Modifier.focusRequester(ambientExitFocus)) { Text("Return to music") }
+                    } else {
+                        Button(onClick=::exitFullVideo,colors=buttonColors,modifier=Modifier.focusRequester(fullExitFocus)) { Text("Exit full screen") }
+                    }
                 }
             }
         }
@@ -177,8 +210,16 @@ fun MusicScreen(contentFocus:FocusRequester,onAmbientChanged:(Boolean)->Unit={},
                 onPhotos={ if(playing!=null) ambient=true else context.startActivity(android.content.Intent(context,dev.drewett.vista.PhotoSlideshowActivity::class.java)) },
                 onPlay={ tracks,index -> if(tracks.isNotEmpty()) { playerController.reset();playbackQueue=tracks.toList();playbackIndex=index;isPlaying=true } },onBackRoot=onRequestTopBar,navigation=browserNavigation)
             if(playing!=null && trackPlayer!=null) {
-                Box(Modifier.align(Alignment.TopEnd).padding(top=28.dp,end=36.dp)) {
-                    trackPlayer(Modifier.width(280.dp).height(150.dp),true)
+                // The video is a focusable tile: select it to watch full screen.
+                Surface(onClick={ fullVideo=true },modifier=Modifier.align(Alignment.TopEnd).padding(top=28.dp,end=36.dp)
+                    .focusRequester(playerTileFocus).onFocusChanged { playerTileFocused=it.hasFocus }.focusPop(focusedScale=1.03f).width(280.dp).height(150.dp),
+                    shape=ClickableSurfaceDefaults.shape(RoundedCornerShape(16.dp)),scale=ClickableSurfaceDefaults.scale(focusedScale=1f),
+                    colors=ClickableSurfaceDefaults.colors(containerColor=Color.Black,focusedContainerColor=Color.Black)) {
+                    Box(Modifier.fillMaxSize()) {
+                        trackPlayer(Modifier.fillMaxSize(),false)
+                        if(playerTileFocused) Text("Select for full screen",color=Color.White,style=MaterialTheme.typography.labelMedium,
+                            modifier=Modifier.align(Alignment.BottomEnd).padding(8.dp).background(Color.Black.copy(alpha=0.6f),RoundedCornerShape(8.dp)).padding(horizontal=8.dp,vertical=3.dp))
+                    }
                 }
                 MusicPlayerBar(playing,isPlaying,playbackIndex>0,playbackIndex<playbackQueue.lastIndex,playbackQueue.size,
                     onPrevious={ skip(-1) },onToggle=::togglePlayback,onNext={ skip(1) },onQueue={ queueRequest++ },

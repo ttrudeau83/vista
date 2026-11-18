@@ -152,6 +152,9 @@ private fun PanelContent(
         Tile("Trakt account", "Movies & Shows", R.drawable.ic_display, Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, dev.drewett.vista.TraktSettingsActivity::class.java))
         }
+        Tile("TV inputs", "Remote buttons → HDMI 1–4", R.drawable.ic_display, Modifier.fillMaxWidth()) {
+            context.startActivity(Intent(context, dev.drewett.vista.TvInputsSettingsActivity::class.java))
+        }
         Tile("Start photo screensaver", "Keep music playing", R.drawable.ic_screensaver, Modifier.fillMaxWidth()) {
             context.startActivity(Intent(context, dev.drewett.vista.PhotoSlideshowActivity::class.java))
         }
