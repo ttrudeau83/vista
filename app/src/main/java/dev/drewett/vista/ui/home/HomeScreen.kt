@@ -262,6 +262,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
             onFocus={ railFocused=it },use24Hour=use24Hour,modifier=Modifier.align(Alignment.CenterStart),
             onNuvioLongPress={ tab=VistaTab.NUVIO;openNuvio("profiles") })
         BackHandler(railFocused && !searchOpen && menuApp==null) { pendingReturnFocus=panelReturnFocus.value;panelEntry++ }
+        if(!musicAmbient) HomeRedirectBanner(Modifier.align(Alignment.BottomEnd).padding(end=28.dp,bottom=20.dp))
         AppContextMenu(
             app = menuApp,
             isFavourite = menuApp?.packageName in favouritesSet,

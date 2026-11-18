@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 22
-        versionName = "0.6.2-music-signin"
+        versionCode = 23
+        versionName = "0.6.3-home-guard"
     }
 
     buildTypes {

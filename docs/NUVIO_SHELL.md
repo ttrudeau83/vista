@@ -54,3 +54,16 @@ In `../nuvio-vista`: `git fetch upstream --tags`, merge the next stable tag into
 `vista-shell`, resolve conflicts (expected only in `MainActivity.kt`,
 `app/build.gradle.kts` and `res/values/strings.xml`), build, and check playback,
 sign-in, Back/Home and rail hand-off on the Onn before installing.
+
+## Home redirect guard (0.6.3, 2026-11-17)
+
+Home only reaches Vista/Nuvio while Vista's accessibility service is enabled;
+otherwise the stock Google TV home appears. On 2026-11-17 Android itself cleared
+`enabled_accessibility_services` (settings history shows `pkg:android`, no crash
+logged; cause unknown). Vista never re-enables it over ADB — that is a security
+setting the user turns on in Settings › System › Accessibility › Vista. Vista and
+the Nuvio shell now check the setting on every resume and show a banner with an
+"Open settings" button while it is off, so the failure is never silent.
+
+Wireless ADB note: if the adb server restarts and mDNS finds nothing, connect to
+the TV's address directly (e.g. `adb connect 192.168.0.82:45913`).
