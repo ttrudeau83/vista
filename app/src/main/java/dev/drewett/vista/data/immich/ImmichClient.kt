@@ -127,14 +127,14 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
                 }
                 if (connection.contentLengthLong > maxBytes) {
                     if (!image && !video) throw ImmichResponseTooLarge()
-                    throw ImmichException("This media file is too large to cache.")
+                    throw ImmichMediaUnusable("This media file is too large to cache.")
                 }
                 val type = connection.contentType.orEmpty().substringBefore(';').lowercase()
                 if (image && !type.startsWith("image/") && type != "application/octet-stream") {
-                    throw ImmichException("Immich did not return a supported photo.")
+                    throw ImmichMediaUnusable("Immich did not return a supported photo.")
                 }
                 if (video && !type.startsWith("video/") && type != "application/octet-stream") {
-                    throw ImmichException("Immich did not return a supported video.")
+                    throw ImmichMediaUnusable("Immich did not return a supported video.")
                 }
                 connection.inputStream.use { input ->
                     val buffer = ByteArray(16 * 1024)
@@ -146,7 +146,7 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
                         total += count
                         if (total > maxBytes) {
                             if (!image && !video) throw ImmichResponseTooLarge()
-                            throw ImmichException("The server response exceeded the cache limit.")
+                            throw ImmichMediaUnusable("The server response exceeded the cache limit.")
                         }
                         output.write(buffer, 0, count)
                     }
@@ -165,3 +165,5 @@ internal class ImmichClient(private val server: String, private val apiKey: Stri
 }
 
 internal class ImmichResponseTooLarge : ImmichException("The server response is too large.")
+/** This item can never be cached or shown on this device; retrying it cannot succeed. */
+internal class ImmichMediaUnusable(message: String) : ImmichException(message)

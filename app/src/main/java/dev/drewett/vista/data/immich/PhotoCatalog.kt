@@ -82,6 +82,16 @@ object AmbientRotationPolicy {
     fun cycleComplete(assets: List<PhotoAsset>, shown: Set<String>, catalogComplete: Boolean): Boolean =
         catalogComplete && assets.isNotEmpty() && unseen(assets, shown).isEmpty()
 
+    /**
+     * IDs to return to the unseen pool. Photos and videos cycle independently, so a slow video
+     * backlog can never leave the slideshow with no photos to download.
+     */
+    fun finishedCycles(assets: List<PhotoAsset>, shown: Set<String>, catalogComplete: Boolean): Set<String> =
+        MediaKind.entries.flatMap { kind ->
+            val ofKind = assets.filter { it.kind == kind }
+            if (cycleComplete(ofKind, shown, catalogComplete)) ofKind.map { it.id } else emptyList()
+        }.toSet()
+
     fun window(assets: List<PhotoAsset>, shown: Set<String>): List<PhotoAsset> {
         val fresh = unseen(assets, shown)
         // Stable per cycle/order: request coalescing cannot keep changing download targets.

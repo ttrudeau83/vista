@@ -17,6 +17,16 @@ class PhotoCatalogTest {
         assertNotEquals(today,PhotoPolicy.dailyPool(assets,day.plusDays(1)))
     }
 
+    @Test fun photoCycleRestartsWhileVideosAreStillUnseen() {
+        val photos = (0 until 5).map { PhotoAsset("p$it") }
+        val videos = (0 until 3).map { PhotoAsset("v$it", kind = MediaKind.VIDEO) }
+        val shown = photos.map { it.id }.toSet() + "v0"
+        val finished = AmbientRotationPolicy.finishedCycles(photos + videos, shown, catalogComplete = true)
+        assertEquals(photos.map { it.id }.toSet(), finished)
+        assertTrue(AmbientRotationPolicy.finishedCycles(photos + videos, shown, catalogComplete = false).isEmpty())
+        assertTrue(AmbientRotationPolicy.finishedCycles(photos + videos, setOf("p0"), catalogComplete = true).isEmpty())
+    }
+
     @Test fun dailyPoolRemainsUsableWithSmallAlbums() {
         val asset = PhotoAsset("one")
         assertEquals(listOf(asset),PhotoPolicy.dailyPool(listOf(asset,asset)))

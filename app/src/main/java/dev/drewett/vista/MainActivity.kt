@@ -25,6 +25,7 @@ class MainActivity : ComponentActivity() {
         writer.println("${prefix}VistaDiagnostics renderedVideoStarts=${repo.ambientVideoStarts.value}")
         writer.println("${prefix}VistaDiagnostics photos=${assets.count { !it.isVideo }} videos=${assets.count { it.isVideo }} cachedVideos=${assets.count { it.isVideo && it.cachedFile?.isFile==true }} currentKind=${repo.currentAmbient.value?.kind ?: "NONE"} loading=${repo.loading.value}")
         writer.println("${prefix}VistaDiagnostics status=${repo.status.value.orEmpty()}")
+        writer.println("${prefix}VistaDiagnostics cache ${repo.diagnostics()}")
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()

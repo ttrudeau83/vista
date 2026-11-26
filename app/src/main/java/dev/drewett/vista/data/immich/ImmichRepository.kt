@@ -51,6 +51,8 @@ class ImmichRepository private constructor(context: Context) {
     private var catalogComplete = false
     private var catalogLimitReached = false
     private var lastPrefetchFailure = 0L
+    /** The slideshow's latest video preference; background warming must follow the same rule. */
+    @Volatile private var ambientVideosWanted = true
     private val downloads = mutableMapOf<String, Mutex>()
     private val _config = MutableStateFlow(ImmichConfig())
     val config: StateFlow<ImmichConfig> = _config.asStateFlow()
@@ -169,6 +171,7 @@ class ImmichRepository private constructor(context: Context) {
     /** A missing fresh item means keep the current visual while the rolling cache refills. */
     suspend fun ambientMedia(advance: Boolean = false, includeVideos: Boolean = true): AmbientMedia? = safe {
         awaitReady()
+        ambientVideosWanted = includeVideos
         val snapshot = snapshotOrNull() ?: return@safe null
         if (mutex.withLock { catalog.isEmpty() }) refreshCatalog(snapshot, firstPageOnly = true)
         val result = mutex.withLock {
@@ -179,9 +182,10 @@ class ImmichRepository private constructor(context: Context) {
                 manualAmbientId=null
                 return@withLock current.ambient()
             }
-            if (AmbientRotationPolicy.cycleComplete(eligible, shown, catalogComplete)) {
-                shown = shown - eligible.map { it.id }.toSet()
-                retryAfter.clear()
+            val finished = AmbientRotationPolicy.finishedCycles(eligible, shown, catalogComplete)
+            if (finished.isNotEmpty()) {
+                shown = shown - finished
+                retryAfter.keys.removeAll(finished)
                 writeIndexLocked()
             }
             val chosen = AmbientRotationPolicy.ready(eligible, shown, ambientId, Random.nextInt(),preferVideo=photosSinceVideo>=3)
@@ -245,6 +249,26 @@ class ImmichRepository private constructor(context: Context) {
             if (catalog.any { it.id == id }) { shown = shown + id; writeIndexLocked() }
         }
         requestPrefetch()
+    }
+    /** Counts only (no IDs, URLs or file names) for `dumpsys activity` diagnostics. */
+    fun diagnostics(): String {
+        if (!mutex.tryLock()) return "busy"
+        try {
+            val assets = withFilesLocked()
+            val eligible = ambientEligibleLocked()
+            val unseen = eligible.filter { it.id !in shown }
+            val now = System.currentTimeMillis()
+            val used = saved?.namespace?.let { File(root, it).listFiles().orEmpty()
+                .filter { f -> f.name.startsWith("asset-") || f.name.startsWith("bootstrap-") }.sumOf(File::length) } ?: 0L
+            val current = assets.firstOrNull { it.id == currentId }
+            return "mode=${saved?.slideshowMode} videos=$ambientVideosWanted eligible=${eligible.size} shown=${shown.size} unseen=${unseen.size}" +
+                " unseenPhotos=${unseen.count { !it.isVideo }} unseenCachedPhotos=${unseen.count { !it.isVideo && it.cachedFile?.isFile == true }}" +
+                " unseenCachedVideos=${unseen.count { it.isVideo && it.cachedFile?.isFile == true }}" +
+                " cachedMB=${used / (1024 * 1024)} window=${rollingWindowLocked().size} retrying=${retryAfter.count { it.value > now }}" +
+                " catalogComplete=$catalogComplete limit=$catalogLimitReached hasAmbient=${ambientId != null}" +
+                " currentSet=${currentId != null} currentCached=${current?.cachedFile != null} currentQuality=${current?.quality}" +
+                " prefetchActive=${prefetchJob?.isActive} sinceFailureMs=${now - lastPrefetchFailure}"
+        } finally { mutex.unlock() }
     }
     fun endAmbientSession(previous:String?) {
         scope.launch { mutex.withLock {
@@ -557,10 +581,10 @@ class ImmichRepository private constructor(context: Context) {
                     val assets=withFilesLocked()
                     val current = assets.firstOrNull { it.id==ambientId && !it.isVideo } ?: assets.firstOrNull { it.id == currentId }
                     val used=File(root,snapshot.namespace).listFiles().orEmpty().filter { it.name.startsWith("asset-") || it.name.startsWith("bootstrap-") }.sumOf { it.length() }
-                    val mayWarm=PhotoCachePolicy.canWarm(used,ambientEligibleLocked().any { it.id !in shown && it.cachedFile?.isFile==true })
+                    val mayWarm=PhotoCachePolicy.canWarm(used,ambientEligibleLocked(ambientVideosWanted).any { it.id !in shown && it.cachedFile?.isFile==true })
                     val photos = PhotoPolicy.prefetchCandidates((daily.filter { !it.isVideo } + listOfNotNull(current?.takeIf { !it.isVideo })).distinctBy { it.id }, hidden,
                         saved?.slideshowMode ?: SlideshowMode.RANDOM, current?.id)
-                    val videos = if(mayWarm) daily.filter { it.isVideo && it.cachedFile == null }.take(1) else emptyList()
+                    val videos = if(mayWarm && ambientVideosWanted) daily.filter { it.isVideo && it.cachedFile == null }.take(1) else emptyList()
                     val photoTargets=if(mayWarm) photos else photos.filter { it.id==current?.id }
                     (videos + photoTargets.take(if(videos.isEmpty()) 3 else 2)).map { it.id }
                 }
@@ -571,7 +595,9 @@ class ImmichRepository private constructor(context: Context) {
                         catch (cancelled: CancellationException) { throw cancelled }
                         catch (error: Exception) {
                             mutex.withLock { if (isCurrentLocked(snapshot)) {
-                                retryAfter[id] = System.currentTimeMillis() + 60_000
+                                // An unusable file would otherwise stay "unseen" forever and stall the cycle.
+                                if (error is ImmichMediaUnusable) { shown = shown + id; writeIndexLocked() }
+                                else retryAfter[id] = System.currentTimeMillis() + 60_000
                                 _status.value = if (error is ImmichException) error.message else "Some media could not load. Cached media remain available."
                             } }
                             false
@@ -621,7 +647,7 @@ class ImmichRepository private constructor(context: Context) {
                         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                         BitmapFactory.decodeFile(staging.absolutePath, bounds)
                         if (bounds.outWidth !in 1..100_000 || bounds.outHeight !in 1..100_000)
-                            throw ImmichException("This photo format cannot be displayed on this device.")
+                            throw ImmichMediaUnusable("This photo format cannot be displayed on this device.")
                     }
                     mutex.withLock commit@ {
                         if (!isCurrentLocked(snapshot) || id in hidden || (id in shown && id != currentId && id != ambientId)) return@commit null
