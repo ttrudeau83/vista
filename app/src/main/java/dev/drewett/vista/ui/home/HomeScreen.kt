@@ -225,7 +225,6 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 topBarFocus = topBarFocus,
                 contentFocus = contentFocus,
                 resetSignal = resetSignal,
-                photo = photo,
                 heroAction = {
                     Button(onClick={ smartTubeApp?.let(viewModel::launch) }, enabled=smartTubeApp!=null,
                         modifier=Modifier.railBoundary().then(if(smartTubeSections.isEmpty()) Modifier.focusRequester(contentFocus) else Modifier)) {

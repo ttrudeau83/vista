@@ -12,8 +12,8 @@ android {
         applicationId = "dev.drewett.vista"
         minSdk = 28
         targetSdk = 34
-        versionCode = 27
-        versionName = "0.7.1-tv-inputs"
+        versionCode = 28
+        versionName = "0.7.2-tube-backdrop"
     }
 
     buildTypes {

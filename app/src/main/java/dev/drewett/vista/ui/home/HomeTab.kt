@@ -174,11 +174,14 @@ private fun HeroBackground(item: Spotlight?) {
     Box(Modifier.fillMaxSize()) {
         Crossfade(targetState = item, animationSpec = tween(450), label = "heroBg") { current ->
             when {
+                // Large copy of the selected thumbnail, anchored top-right. A soft blur hides
+                // the upscaling of low-resolution YouTube thumbnails.
                 current?.posterUri != null -> AsyncImage(
                     model = current.posterUri,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().blur(22.dp),
+                    modifier = Modifier.fillMaxSize().blur(6.dp),
                     contentScale = ContentScale.Crop,
+                    alignment = Alignment.TopEnd,
                 )
 
                 // Apps have no high-res art — use an ambient colour wash from the icon/banner.
@@ -193,8 +196,12 @@ private fun HeroBackground(item: Spotlight?) {
             }
         }
         // Scrims: left + bottom fade to background so text and rows stay readable.
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to bg, 0.5f to Color.Transparent)))
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.35f to Color.Transparent, 1f to bg)))
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
+            0f to bg.copy(alpha = 0.92f), 0.3f to bg.copy(alpha = 0.6f), 0.6f to Color.Transparent)))
+        // Long, eased fade at the bottom so the image melts into the shelves.
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(
+            0.25f to Color.Transparent, 0.45f to bg.copy(alpha = 0.25f), 0.6f to bg.copy(alpha = 0.6f),
+            0.75f to bg.copy(alpha = 0.88f), 1f to bg)))
     }
 }
 
