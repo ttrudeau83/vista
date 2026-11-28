@@ -21,7 +21,7 @@ class FamilyCalendarActivity : ComponentActivity() {
             val settings: SettingsViewModel = viewModel()
             val theme by settings.themeMode.collectAsStateWithLifecycle()
             val use24Hour by settings.use24Hour.collectAsStateWithLifecycle()
-            val dark = when (theme) { ThemeMode.AUTO -> isSystemInDarkTheme(); ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
+            val dark = when (theme) { ThemeMode.AUTO -> dev.drewett.vista.ui.theme.vistaSystemDark(); ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
             VistaTheme(dark = dark) { FamilyCalendarScreen(onDone = { finish() }, use24Hour = use24Hour) }
         }
     }

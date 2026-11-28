@@ -796,12 +796,18 @@ class ImmichRepository private constructor(context: Context) {
     }
     private suspend fun <T> safe(block: suspend () -> T): T = withContext(Dispatchers.IO) {
         try { block() }
-        catch (_: TimeoutCancellationException) { currentCoroutineContext().ensureActive(); throw ImmichException("Immich is taking too long. Cached photos remain available.") }
+        catch (_: TimeoutCancellationException) { currentCoroutineContext().ensureActive(); logFailure("timeout", null); throw ImmichException("Immich is taking too long. Cached photos remain available.") }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (error: ImmichException) { throw error }
-        catch (error: IllegalArgumentException) { throw ImmichException(error.message?.takeIf { it.startsWith("Use ") || it.startsWith("Enter ") || it.startsWith("Choose ") }
+        catch (error: ImmichException) { logFailure("immich", error); throw error }
+        catch (error: IllegalArgumentException) { logFailure("response", error); throw ImmichException(error.message?.takeIf { it.startsWith("Use ") || it.startsWith("Enter ") || it.startsWith("Choose ") }
             ?: "Immich returned an unsupported response.") }
-        catch (_: Exception) { throw ImmichException("Cannot reach Immich. Cached photos remain available.") }
+        catch (error: Exception) { logFailure("network", error); throw ImmichException("Cannot reach Immich. Cached photos remain available.") }
+    }
+    /** Why a request failed, for `adb logcat -s VistaImmich`. Exception types and the root cause only; never headers or keys. */
+    private fun logFailure(kind: String, error: Throwable?) {
+        val chain = generateSequence(error) { it.cause }.take(5).toList()
+        android.util.Log.w("VistaImmich", "$kind failure: ${chain.joinToString(" <- ") { it.javaClass.simpleName }}" +
+            (chain.lastOrNull()?.message?.take(160)?.let { " ($it)" } ?: ""))
     }
     companion object {
         @Volatile private var instance: ImmichRepository? = null

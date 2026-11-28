@@ -21,7 +21,7 @@ class TraktSettingsActivity : ComponentActivity() {
             val settings: SettingsViewModel = viewModel()
             val theme by settings.themeMode.collectAsStateWithLifecycle()
             val dark = when (theme) {
-                ThemeMode.AUTO -> isSystemInDarkTheme()
+                ThemeMode.AUTO -> dev.drewett.vista.ui.theme.vistaSystemDark()
                 ThemeMode.DARK -> true
                 ThemeMode.LIGHT -> false
             }

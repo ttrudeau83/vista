@@ -39,7 +39,9 @@ class VistaAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         val home = packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)?.activityInfo
         firmwareHome = home?.takeIf { it.packageName != packageName }?.let { android.content.ComponentName(it.packageName, it.name) }
+        stockHomes = setOfNotNull(firmwareHome) + dev.drewett.vista.data.system.Platform.stockHomeComponents(this)
     }
+    private var stockHomes: Set<android.content.ComponentName> = emptySet()
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && GoogleTvLaunchSession.freeplayActive) {
@@ -56,8 +58,7 @@ class VistaAccessibilityService : AccessibilityService() {
         // OS-resolved Home activity, never its settings, search, or other applications.
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             !GoogleTvLaunchSession.freeplayActive &&
-            event.packageName?.toString() == firmwareHome?.packageName &&
-            event.className?.toString() == firmwareHome?.className) {
+            stockHomes.any { it.packageName == event.packageName?.toString() && it.className == event.className?.toString() }) {
             openHome()
         }
     }

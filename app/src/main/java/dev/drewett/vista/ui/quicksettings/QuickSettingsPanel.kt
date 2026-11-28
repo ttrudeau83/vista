@@ -199,7 +199,9 @@ private fun PanelContent(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             GridTile("Display", R.drawable.ic_display) { open(Settings.ACTION_DISPLAY_SETTINGS) }
-            GridTile("Accessibility", R.drawable.ic_accessibility) { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
+            // Fire OS routes this to a dummy page, so only offer it on Google TV.
+            if (!dev.drewett.vista.data.system.Platform.isFireOs(context))
+                GridTile("Accessibility", R.drawable.ic_accessibility) { open(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             GridTile("Screensaver settings", R.drawable.ic_screensaver) { open("android.settings.DREAM_SETTINGS") }
@@ -210,7 +212,7 @@ private fun PanelContent(
             (context as? android.app.Activity)?.recreate()
             onDismiss()
         }
-        Tile("Google TV settings", "Open", R.drawable.ic_settings, Modifier.fillMaxWidth()) { open(Settings.ACTION_SETTINGS) }
+        Tile("${dev.drewett.vista.data.system.Platform.systemName(context)} settings", "Open", R.drawable.ic_settings, Modifier.fillMaxWidth()) { open(Settings.ACTION_SETTINGS) }
 
         Text(
             "Notifications",

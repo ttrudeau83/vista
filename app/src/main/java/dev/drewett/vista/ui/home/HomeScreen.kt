@@ -82,7 +82,8 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     val nuvioPackage = dev.drewett.vista.domain.PublishedContent.preferredNuvioPackage(apps.map { it.packageName })
     val nuvioApp = apps.firstOrNull { it.packageName == nuvioPackage }
     val smartTubeApp = apps.firstOrNull { dev.drewett.vista.domain.PublishedContent.isSmartTube(it.packageName) }
-    val youTubeApp = apps.firstOrNull { it.packageName == "com.google.android.youtube.tv" }
+    val youTubeApp = dev.drewett.vista.data.system.Platform.youTubePackages
+        .firstNotNullOfOrNull { pkg -> apps.firstOrNull { it.packageName == pkg } }
 
     var tab by remember { mutableStateOf(VistaTab.NUVIO) }
     /** Nuvio is home: the shell fork at [route] ("home"/"profiles"), else the regular Nuvio app. */

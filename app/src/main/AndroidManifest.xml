@@ -22,6 +22,8 @@
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
+    <!-- Fire OS: re-check the Home redirect at boot (HomeRedirectReceiver) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Coil loads remote poster art for content rows -->
@@ -103,6 +105,14 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- Fire OS: keeps the Home redirect on after boot / app updates (no-op on Google TV). -->
+        <receiver android:name=".service.HomeRedirectReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Android starts this only when selected as the system screensaver. -->
         <service

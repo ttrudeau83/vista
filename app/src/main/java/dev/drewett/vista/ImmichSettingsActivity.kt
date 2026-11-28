@@ -23,7 +23,7 @@ class ImmichSettingsActivity : ComponentActivity() {
             val dark = when (mode) {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
-                ThemeMode.AUTO -> isSystemInDarkTheme()
+                ThemeMode.AUTO -> dev.drewett.vista.ui.theme.vistaSystemDark()
             }
             VistaTheme(dark = dark) { ImmichSettingsScreen(onDone = { finish() }) }
         }

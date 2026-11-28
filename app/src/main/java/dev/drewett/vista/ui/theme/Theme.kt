@@ -24,9 +24,17 @@ fun appearanceColor(value:String)=Color(AppearanceColors.argb(value).toInt())
  * Adaptive day/night theme. Day = light & bright (projector readability in daylight);
  * night = deep cinematic. Driven by the system uiMode we control elsewhere.
  */
+/**
+ * The system's night state, used by the Auto theme. Fire OS has no day/night setting and always
+ * reports day, so Auto stays dark there (the Fire TV's own UI is dark too).
+ */
+@Composable
+fun vistaSystemDark(): Boolean =
+    isSystemInDarkTheme() || dev.drewett.vista.data.system.Platform.isFireOs(LocalContext.current)
+
 @Composable
 fun VistaTheme(
-    dark: Boolean = isSystemInDarkTheme(),
+    dark: Boolean = vistaSystemDark(),
     content: @Composable () -> Unit,
 ) {
     val context=LocalContext.current

@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             val dark = when (themeMode) {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
-                ThemeMode.AUTO -> isSystemInDarkTheme()
+                ThemeMode.AUTO -> dev.drewett.vista.ui.theme.vistaSystemDark()
             }
             VistaTheme(dark = dark) {
                 VistaRoot(
@@ -69,6 +69,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         VistaForeground.isForeground = true
+        // Fire OS only (and only with the ADB grant): keep the Home redirect switched on.
+        dev.drewett.vista.data.system.HomeRedirect.ensureEnabled(this)
     }
 
     override fun onPause() {

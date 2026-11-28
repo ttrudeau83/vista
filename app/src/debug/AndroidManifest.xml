@@ -7,5 +7,11 @@
             android:authorities="${applicationId}.debug.immich"
             android:exported="true"
             android:permission="android.permission.DUMP" />
+        <!-- Shell-only connection transfer between TVs (scripts/Transfer-Connections.ps1). Debug only. -->
+        <provider
+            android:name="dev.drewett.vista.debug.ConnectionTransferProvider"
+            android:authorities="${applicationId}.debug.transfer"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
 </manifest>

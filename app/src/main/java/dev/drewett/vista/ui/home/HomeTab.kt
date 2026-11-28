@@ -179,7 +179,10 @@ private fun HeroBackground(item: Spotlight?) {
                 current?.posterUri != null -> AsyncImage(
                     model = current.posterUri,
                     contentDescription = null,
-                    modifier = Modifier.fillMaxSize().blur(6.dp),
+                    // Blur needs Android 12+; on Fire OS 8 (Android 11) dim instead so upscaling stays soft.
+                    modifier = Modifier.fillMaxSize().then(
+                        if (dev.drewett.vista.data.system.Platform.supportsBlur) Modifier.blur(6.dp)
+                        else Modifier.alpha(0.7f)),
                     contentScale = ContentScale.Crop,
                     alignment = Alignment.TopEnd,
                 )

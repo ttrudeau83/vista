@@ -51,20 +51,23 @@ fun VistaNavigationRail(selected:VistaTab,railFocus:FocusRequester,onEnter:(Vist
     onSearch:()->Unit,onSettings:()->Unit,onFocus:(Boolean)->Unit,use24Hour:Boolean,modifier:Modifier=Modifier,
     onNuvioLongPress:()->Unit={}) {
     var expanded by remember { mutableStateOf(false) }
+    val context=androidx.compose.ui.platform.LocalContext.current
+    // Freeplay is a Google TV service; Fire OS has no equivalent, so it is left out there.
+    val tabs=remember { VistaTab.entries.filter { it!=VistaTab.FREEPLAY || !dev.drewett.vista.data.system.Platform.isFireOs(context) } }
     // Search leads the rail (index 0), then the tabs, then Settings — same order as the Nuvio shell.
-    fun railIndex(tab:VistaTab)=tab.ordinal+1
+    fun railIndex(tab:VistaTab)=tabs.indexOf(tab).coerceAtLeast(0)+1
     var lastFocus by remember { mutableStateOf(railIndex(selected)) }
     // Tabs can change from outside the rail (e.g. chosen in the Nuvio shell's copy of it).
     LaunchedEffect(selected) { lastFocus = railIndex(selected) }
-    val itemFocus=remember { List(VistaTab.entries.size+2) { FocusRequester() } }
+    val itemFocus=remember { List(tabs.size+2) { FocusRequester() } }
     val width by animateDpAsState(if(expanded) 224.dp else 84.dp,tween(180),label="navigation width")
-    val icons=listOf(R.drawable.ic_search)+VistaTab.entries.map { it.icon }+listOf(R.drawable.ic_settings)
-    val labels=listOf("Search")+VistaTab.entries.map { it.label }+listOf("Settings")
+    val icons=listOf(R.drawable.ic_search)+tabs.map { it.icon }+listOf(R.drawable.ic_settings)
+    val labels=listOf("Search")+tabs.map { it.label }+listOf("Settings")
     fun activate(index:Int) {
         when(index) {
             0 -> onSearch()
-            VistaTab.entries.size+1 -> onSettings()
-            else -> onEnter(VistaTab.entries[index-1])
+            tabs.size+1 -> onSettings()
+            else -> onEnter(tabs[index-1])
         }
     }
     Column(modifier.width(width).fillMaxHeight().clipToBounds()

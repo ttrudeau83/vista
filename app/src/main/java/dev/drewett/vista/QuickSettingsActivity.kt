@@ -31,7 +31,7 @@ class QuickSettingsActivity : ComponentActivity() {
             val dark = when (themeMode) {
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
-                ThemeMode.AUTO -> isSystemInDarkTheme()
+                ThemeMode.AUTO -> dev.drewett.vista.ui.theme.vistaSystemDark()
             }
             var visible by remember { mutableStateOf(false) }
             LaunchedEffect(Unit) { visible = true }
