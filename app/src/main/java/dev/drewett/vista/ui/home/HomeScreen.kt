@@ -131,7 +131,8 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
     LaunchedEffect(requestedTab) {
         val chosen = requestedTab?.let { name -> VistaTab.entries.firstOrNull { it.name == name } }
         VistaSignals.requestedTab.value = null
-        if (chosen != null && chosen != VistaTab.NUVIO) {
+        if (chosen == VistaTab.PROFILES) openNuvio("profiles")
+        else if (chosen != null && chosen != VistaTab.NUVIO) {
             searchOpen = false; panelReturnFocus.value = null; pendingReturnFocus = null
             tab = chosen
             if (chosen == VistaTab.FREEPLAY) openFreeplay() else panelEntry++
@@ -185,6 +186,7 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
                 ContentGrid("From Nuvio", allContent.filter { it.packageName==nuvioApp?.packageName }, viewModel::launchContent,
                     modifier=Modifier.weight(1f), emptyMessage="Open Nuvio to browse its catalog.")
             }
+            VistaTab.PROFILES -> Unit // never a page; see onEnter
             VistaTab.MOVIES -> TraktLibraryPanel(true, movies, viewModel::launchContent, contentFocus,
                 nuvioApp != null, { nuvioApp?.let(viewModel::launch) })
             VistaTab.SHOWS -> TraktLibraryPanel(false, shows, viewModel::launchContent, contentFocus,
@@ -252,6 +254,8 @@ private fun HomeContent(onOpenQuickSettings: () -> Unit, viewModel: HomeViewMode
         }
         if(!musicAmbient) VistaNavigationRail(selected=tab,railFocus=topBarFocus,
             onEnter={ chosen ->
+                // An action, not a page: open Nuvio's profile picker and leave the current tab alone.
+                if(chosen==VistaTab.PROFILES) { openNuvio("profiles"); return@VistaNavigationRail }
                 pendingReturnFocus=if(chosen==tab) panelReturnFocus.value else null
                 if(chosen!=tab) panelReturnFocus.value=null
                 searchOpen=false;tab=chosen

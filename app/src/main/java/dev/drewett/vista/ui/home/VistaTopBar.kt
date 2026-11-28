@@ -52,7 +52,11 @@ import java.util.Locale
 
 enum class VistaTab(val label: String,val icon:Int) {
     // Nuvio is home (2026-11-17): the former For you tab was removed.
-    NUVIO("Nuvio",R.drawable.ic_nav_home), MOVIES("Movies",R.drawable.ic_nav_movies), SHOWS("Shows",R.drawable.ic_nav_shows), SMARTTUBE("SmartTube",R.drawable.ic_nav_tube),
+    NUVIO("Nuvio",R.drawable.ic_nav_home),
+    /** Rail action, not a page: opens Nuvio's "Who's watching?" profile picker. */
+    PROFILES("Switch profiles",R.drawable.ic_nav_profiles),
+    /** Trakt history only; Nuvio covers browsing, so these are kept off the rail (2026-11-27). */
+    MOVIES("Movies",R.drawable.ic_nav_movies), SHOWS("Shows",R.drawable.ic_nav_shows), SMARTTUBE("SmartTube",R.drawable.ic_nav_tube),
     /** Opens the official YouTube app (Ben's account); SmartTube stays the parent's. */
     YOUTUBE_KIDS("YouTube Kids",R.drawable.ic_nav_kids),
     MUSIC("Music",R.drawable.ic_nav_music), PHOTOS("Photos",R.drawable.ic_nav_photos), FREEPLAY("Freeplay",R.drawable.ic_nav_live), APPS("Apps",R.drawable.ic_nav_apps),

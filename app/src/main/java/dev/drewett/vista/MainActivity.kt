@@ -30,6 +30,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Fire OS never asks apps to create their home-screen channels; Vista does (once per process).
+        dev.drewett.vista.data.channels.ChannelInitializer.requestOnFireOs(this)
         if (savedInstanceState == null) {
             val tab = intent?.getStringExtra(VistaSignals.EXTRA_TAB)
             // Nuvio is home: a fresh start goes there unless the Nuvio shell asked for a Vista tab.

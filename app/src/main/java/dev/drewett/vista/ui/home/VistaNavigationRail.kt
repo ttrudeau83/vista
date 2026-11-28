@@ -52,8 +52,10 @@ fun VistaNavigationRail(selected:VistaTab,railFocus:FocusRequester,onEnter:(Vist
     onNuvioLongPress:()->Unit={}) {
     var expanded by remember { mutableStateOf(false) }
     val context=androidx.compose.ui.platform.LocalContext.current
+    // Movies/Shows only showed Trakt history, which Nuvio covers, so they're off the rail on both TVs.
     // Freeplay is a Google TV service; Fire OS has no equivalent, so it is left out there.
-    val tabs=remember { VistaTab.entries.filter { it!=VistaTab.FREEPLAY || !dev.drewett.vista.data.system.Platform.isFireOs(context) } }
+    val tabs=remember { VistaTab.entries.filter { it!=VistaTab.MOVIES && it!=VistaTab.SHOWS &&
+        (it!=VistaTab.FREEPLAY || !dev.drewett.vista.data.system.Platform.isFireOs(context)) } }
     // Search leads the rail (index 0), then the tabs, then Settings — same order as the Nuvio shell.
     fun railIndex(tab:VistaTab)=tabs.indexOf(tab).coerceAtLeast(0)+1
     var lastFocus by remember { mutableStateOf(railIndex(selected)) }

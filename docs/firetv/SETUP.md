@@ -27,7 +27,8 @@ Fire OS has no real Accessibility settings page, so Vista holds `WRITE_SECURE_SE
 | Home redirect | Self-heals (onn: user toggles it in Settings) |
 | Freeplay tab | Hidden (Google-only) |
 | Hero blur | Dimmed instead (blur needs Android 12+) |
-| Continue Watching / content rows | Empty: nothing publishes to the TV provider on Fire OS |
+| Continue Watching / content rows | Fire OS never sends `INITIALIZE_PROGRAMS`, so Vista sends it at startup (`ChannelInitializer`). Nuvio's rows then appear. SmartTube publishes only when its own "channels" setting is on. |
+| Rail | Same on both TVs: Search, Nuvio, Switch profiles, SmartTube, YouTube Kids, Music, Photos, Apps, Settings (Freeplay only on Google TV) |
 | YouTube | `com.amazon.firetv.youtube` |
 | Accessibility quick tile | Hidden (it opens a dummy page) |
 
